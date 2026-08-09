@@ -33,8 +33,13 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 require("spacetime").setup({
   log_level = vim.log.levels.INFO,
+  identity = nil,
 })
 ```
+
+- `log_level` — minimum severity for the plugin's own `vim.notify()` messages.
+- `identity` — overrides the identity derived from your token's claims; a
+  last-resort escape hatch.
 
 ## Development
 

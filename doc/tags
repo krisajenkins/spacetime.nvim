@@ -6,6 +6,7 @@ spacetime-contents	spacetime.txt	/*spacetime-contents*
 spacetime-health	spacetime.txt	/*spacetime-health*
 spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*
+spacetime-opt-identity	spacetime.txt	/*spacetime-opt-identity*
 spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*
 spacetime.config	spacetime.txt	/*spacetime.config*

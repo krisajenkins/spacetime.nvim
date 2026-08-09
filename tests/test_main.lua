@@ -45,4 +45,20 @@ T["setup() does not store log_level as config"] = function()
 	expect.equality(spacetime.config.log_level, nil)
 end
 
+T["setup() rejects a non-string identity"] = function()
+	local spacetime = require("spacetime")
+	expect.error(function()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		spacetime.setup({ identity = 42 })
+	end)
+end
+
+-- Unlike log_level, the identity override is stored: it is read whenever an
+-- identity is needed, not consumed once at setup time.
+T["setup() stores the identity override"] = function()
+	local spacetime = require("spacetime")
+	spacetime.setup({ identity = "c200deadbeef" })
+	expect.equality(spacetime.config.identity, "c200deadbeef")
+end
+
 return T

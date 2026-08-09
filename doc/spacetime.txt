@@ -59,6 +59,7 @@ unset fields keep their defaults. >lua
 
     require("spacetime").setup({
       log_level = vim.log.levels.INFO,
+      identity = nil,
     })
 <
                                                        *spacetime-opt-log_level*
@@ -67,6 +68,16 @@ log_level ~
 
     Minimum severity for the plugin's own |vim.notify()| messages. Set to
     `vim.log.levels.DEBUG` when diagnosing a problem.
+
+                                                        *spacetime-opt-identity*
+identity ~
+    Type: `string`, default: `nil`
+
+    Overrides the identity derived from your token's claims; a last-resort
+    escape hatch. The account identity is normally computed from the token's
+    `iss` and `sub` claims, so it should never need setting by hand — but if
+    that derivation goes wrong, a 64-character hex identity here (e.g.
+    `"c200..."`) skips it entirely.
 
 ==============================================================================
 5. LUA API                                                     *spacetime-api*

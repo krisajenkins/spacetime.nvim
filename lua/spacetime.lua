@@ -8,6 +8,7 @@ local logger = require("spacetime.logger")
 ---     require("spacetime").setup(opts)
 ---@class SpacetimeSetupOptions
 ---@field log_level? number Log level, e.g. `vim.log.levels.INFO` (the default)
+---@field identity? string Hex identity override, skipping derivation from the token's claims
 
 local M = {}
 
@@ -27,6 +28,9 @@ function M.setup(opts)
 	-- which silently breaks the logger's numeric comparisons) fails loudly.
 	vim.validate("opts", opts, "table")
 	vim.validate("log_level", opts.log_level, "number", true)
+	-- Unlike log_level, `identity` is stored config: it is read on every request
+	-- that needs the account identity, not acted on once here.
+	vim.validate("identity", opts.identity, "string", true)
 
 	-- Deep-merge user options over a fresh copy of the defaults, so dict-tables
 	-- merge recursively and a partial override keeps its unset siblings.
