@@ -83,8 +83,8 @@ is executable offline with no token and no network:
 
 | File | What it pins down |
 |---|---|
-| `schema_v10.json` (41 KB) | the sectioned v10 shape — task 17's primary path |
-| `schema_v9.json` (35 KB) | the flat v9 shape — task 17's fallback path |
+| `schema_v10.json` (95 KB) | the sectioned v10 shape — task 17's primary path |
+| `schema_v9.json` (74 KB) | the flat v9 shape — task 17's fallback path |
 | `sql_rows.json` | `£` and `🎟` in real rows, plus an Option encoded as `[0,"£"]` |
 | `sql_bigint.json` | U256 identity as a hex *string* beside a U128 as a bare *number* |
 | `logs.ndjson` | 11 real NDJSON log lines |
@@ -419,8 +419,9 @@ be one commit.
    → `tests/test_json.lua`: the real U128 and its negative surviving exactly; `42`, `-17`,
    `1.5`, `-2.25`, `1e3` staying numbers; digits inside string literals, `\"`-escaped
    quotes, a trailing `\\` and non-ASCII all left alone; `[1, null, 3]` keeping length 3
-   with `vim.NIL` in position 2. Benchmark against the 34.4 KB live schema fixture to keep
-   the pass honest (budget: under 1 ms).
+   with `vim.NIL` in position 2. Benchmark against the live schema fixture (95 KB as
+   committed — pretty-printed, larger than the 34.4 KB wire response) to keep the pass
+   honest (budget: under 1 ms).
 7. **`lib/clitoml.lua`** — the cli.toml subset: top-level `key = value`,
    `[[server_configs]]` blocks, `#` comments; unknown keys and malformed lines ignored.
    → `tests/test_clitoml.lua`, including a file containing `web_session_token` which must
