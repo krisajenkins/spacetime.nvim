@@ -1,0 +1,13 @@
+:checkhealth-spacetime	spacetime.txt	/*:checkhealth-spacetime*
+spacetime-about	spacetime.txt	/*spacetime-about*
+spacetime-api	spacetime.txt	/*spacetime-api*
+spacetime-configuration	spacetime.txt	/*spacetime-configuration*
+spacetime-contents	spacetime.txt	/*spacetime-contents*
+spacetime-health	spacetime.txt	/*spacetime-health*
+spacetime-installation	spacetime.txt	/*spacetime-installation*
+spacetime-introduction	spacetime.txt	/*spacetime-introduction*
+spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
+spacetime-requirements	spacetime.txt	/*spacetime-requirements*
+spacetime.config	spacetime.txt	/*spacetime.config*
+spacetime.setup()	spacetime.txt	/*spacetime.setup()*
+spacetime.txt	spacetime.txt	/*spacetime.txt*

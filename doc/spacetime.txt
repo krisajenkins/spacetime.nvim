@@ -1,0 +1,96 @@
+*spacetime.txt*	Neovim plugin for SpacetimeDB
+
+==============================================================================
+CONTENTS                                                   *spacetime-contents*
+
+1. Introduction ...................... |spacetime-introduction|
+2. Requirements ...................... |spacetime-requirements|
+3. Installation ...................... |spacetime-installation|
+4. Configuration ..................... |spacetime-configuration|
+5. Lua API ........................... |spacetime-api|
+6. About ............................. |spacetime-about|
+
+==============================================================================
+1. INTRODUCTION                                        *spacetime-introduction*
+
+spacetime.nvim integrates the SpacetimeDB CLI with Neovim.
+
+The plugin is currently scaffolding: the build, test and documentation
+infrastructure is in place, but no user-facing commands exist yet.
+
+==============================================================================
+2. REQUIREMENTS                                        *spacetime-requirements*
+
+• Neovim >= 0.9.0
+• The `spacetime` command-line tool >= 2.0.0
+• plenary.nvim - required for async operations
+
+HEALTH CHECK                                                *spacetime-health*
+                                                        *:checkhealth-spacetime*
+
+Run |:checkhealth| spacetime to verify your setup: >
+
+    :checkhealth spacetime
+<
+It reports:
+
+• Your Neovim version (warns if older than the minimum supported).
+• Whether the `spacetime` executable is on your PATH, and its version (warns
+  if older than the minimum supported).
+• Whether plenary.nvim is installed.
+
+==============================================================================
+3. INSTALLATION                                        *spacetime-installation*
+
+With lazy.nvim: >lua
+
+    {
+      "krisajenkins/spacetime.nvim",
+      dependencies = { "nvim-lua/plenary.nvim" },
+      config = function()
+        require("spacetime").setup()
+      end,
+    }
+<
+==============================================================================
+4. CONFIGURATION                                      *spacetime-configuration*
+
+Call |spacetime.setup()| with a table of options. Every field is optional and
+unset fields keep their defaults. >lua
+
+    require("spacetime").setup({
+      log_level = vim.log.levels.INFO,
+    })
+<
+                                                       *spacetime-opt-log_level*
+log_level ~
+    Type: `number`, default: `vim.log.levels.INFO`
+
+    Minimum severity for the plugin's own |vim.notify()| messages. Set to
+    `vim.log.levels.DEBUG` when diagnosing a problem.
+
+==============================================================================
+5. LUA API                                                     *spacetime-api*
+
+                                                            *spacetime.setup()*
+require("spacetime").setup({opts})
+
+    Configure the plugin. {opts} is an optional table; see
+    |spacetime-configuration|. Invalid options raise an error rather than
+    failing silently later.
+
+                                                             *spacetime.config*
+require("spacetime").config
+
+    The resolved configuration: the defaults with any {opts} merged over them.
+    Read-only in practice — mutating it is unsupported.
+
+==============================================================================
+6. ABOUT                                                     *spacetime-about*
+
+Source and issue tracker:
+https://github.com/krisajenkins/spacetime.nvim
+
+Distributed under the MIT licence.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Only one CI run per ref at a time — cancel superseded runs instead of letting
+# them finish. Stops a rapid series of pushes from queueing up long builds.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Single-user install (store owned by the runner, not root). This is a hard
+      # requirement for cache-nix-action below: it restores the cache by untarring
+      # straight into /nix as the runner user, which a multi-user/daemon install
+      # (e.g. DeterminateSystems/nix-installer-action) forbids — every path fails
+      # with "Permission denied" and the store silently rebuilds from source.
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+
+      # overlays/neovim.nix pins a version newer than nixpkgs, so it isn't in
+      # cache.nixos.org and compiles from source. That is what makes a cold run
+      # slow. (overlays/spacetimedb.nix installs upstream release binaries, so
+      # it only costs a download.) Cache the resulting /nix/store in GitHub's own
+      # Actions cache so the first run pays the build and every run after
+      # restores it in seconds. The key busts whenever the flake or an overlay
+      # changes, forcing a rebuild only then.
+      - name: Cache Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock', 'overlays/**') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          # Garbage-collect the store down to the runtime closure before saving so
+          # build-only deps (the Rust toolchain, sources) don't bloat the cache
+          # past GitHub's 10 GB cap. Tune upward if a cold run still rebuilds.
+          gc-max-store-size-linux: 5G
+          # Roll the cache: drop older entries with the same prefix, keep the
+          # freshly-written primary key.
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-primary-key: never
+
+      # `make` clones mini.nvim and plenary.nvim into deps/ on every run; cache
+      # them so we skip the re-clone. Keyed on the Makefile since that's where the
+      # clone URLs live.
+      - name: Cache test dependencies
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Run checks and tests
+        run: nix develop -c make
+
+      - name: Check formatting
+        run: nix develop -c make check-format
