@@ -10,3 +10,9 @@ if vim.g.loaded_spacetime then
 	return
 end
 vim.g.loaded_spacetime = 1
+
+-- The one eager require: highlight groups must exist before any renderer (or a
+-- user's colourscheme override) can reference them. The module is a table of
+-- names plus two nvim_set_hl loops — cheap and dependency-free, so it does not
+-- break the "module stays lazy" rule above.
+require("spacetime.ui.highlights").register()
