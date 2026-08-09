@@ -2,8 +2,8 @@
 --
 -- The health module captures vim.health at require time, so we install a
 -- capturing stub *before* forcing a fresh load, then assert on the recorded
--- reports. The test environment has both the `spacetime` CLI and plenary.nvim
--- present (see flake.nix and scripts/minimal_init.lua).
+-- reports. The test environment has both the `spacetime` CLI and `curl` on
+-- PATH (both are declared in flake.nix's buildInputs).
 local T = MiniTest.new_set()
 local expect = MiniTest.expect
 
@@ -68,15 +68,15 @@ T["check runs without error and reports a spacetime section"] = function()
 	restore()
 end
 
-T["reports ok for the CLI and plenary in the test environment"] = function()
+T["reports ok for the CLI and curl in the test environment"] = function()
 	local health, records, restore = with_stubbed_health()
 
 	health.check()
 
-	-- Both the spacetime CLI and plenary are available in the test environment,
-	-- so each should produce an ok report and neither an error.
+	-- Both the spacetime CLI and curl are on PATH in the test environment, so
+	-- each should produce an ok report and neither an error.
 	expect.equality(any_contains(records.ok, "spacetime"), true)
-	expect.equality(any_contains(records.ok, "plenary"), true)
+	expect.equality(any_contains(records.ok, "curl"), true)
 	expect.equality(#records.error, 0)
 
 	restore()

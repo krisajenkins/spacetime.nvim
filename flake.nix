@@ -26,6 +26,7 @@
             stylua
             neovim
             spacetimedb
+            curl
           ];
 
           shellHook = ''
@@ -36,6 +37,7 @@
             echo "  - stylua (code formatting)"
             echo "  - neovim (testing)"
             echo "  - spacetime (SpacetimeDB CLI)"
+            echo "  - curl (HTTP transport)"
             echo ""
             echo "Run 'make' to run all checks and tests"
           '';

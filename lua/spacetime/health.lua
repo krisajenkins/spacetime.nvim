@@ -58,8 +58,7 @@ local function check_spacetime()
 	end
 
 	-- `spacetime --version` prints several lines; the one we want reads
-	-- "spacetimedb tool version 2.8.0; ...". Read it without going through
-	-- plenary so this check stands on its own.
+	-- "spacetimedb tool version 2.8.0; ...".
 	local output = vim.fn.systemlist({ cli_path, "--version" })
 	local version = nil
 	for _, line in ipairs(output or {}) do
@@ -89,29 +88,43 @@ local function check_spacetime()
 	end
 end
 
-local function check_plenary()
-	-- plenary.async and plenary.job back the async CLI integration.
-	local missing = {}
-	for _, mod in ipairs({ "plenary.async", "plenary.job" }) do
-		if not pcall(require, mod) then
-			table.insert(missing, mod)
+local function check_curl()
+	-- curl carries every HTTP request the plugin makes, so it is a hard
+	-- requirement rather than an optional extra.
+	-- vim.fn.exepath takes a single {name} argument; LLS's bundled vim stub
+	-- mistypes it as zero-arg, so silence that false positive.
+	---@diagnostic disable-next-line: redundant-parameter
+	local curl_path = vim.fn.exepath("curl")
+	if curl_path == "" then
+		h.error("curl executable not found on PATH", {
+			"Install curl with your system package manager",
+		})
+		return
+	end
+
+	-- `curl --version` opens with "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/...".
+	local output = vim.fn.systemlist({ curl_path, "--version" })
+	local version = nil
+	for _, line in ipairs(output or {}) do
+		version = line:match("^curl (%S+)")
+		if version then
+			break
 		end
 	end
 
-	if #missing == 0 then
-		h.ok("plenary.nvim is installed")
-	else
-		h.error("plenary.nvim is not available (missing: " .. table.concat(missing, ", ") .. ")", {
-			"Install nvim-lua/plenary.nvim with your plugin manager",
-		})
+	if not version then
+		h.warn("Found curl at " .. curl_path .. " but could not parse its version")
+		return
 	end
+
+	h.ok(string.format("curl %s (%s)", version, curl_path))
 end
 
 function M.check()
 	h.start("spacetime")
 	check_neovim()
 	check_spacetime()
-	check_plenary()
+	check_curl()
 end
 
 return M

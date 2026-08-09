@@ -23,7 +23,7 @@ infrastructure is in place, but no user-facing commands exist yet.
 
 • Neovim >= 0.11.0
 • The `spacetime` command-line tool >= 2.0.0
-• plenary.nvim - required for async operations
+• curl - used for all HTTP requests to SpacetimeDB
 
 HEALTH CHECK                                                *spacetime-health*
                                                         *:checkhealth-spacetime*
@@ -37,7 +37,7 @@ It reports:
 • Your Neovim version (warns if older than the minimum supported).
 • Whether the `spacetime` executable is on your PATH, and its version (warns
   if older than the minimum supported).
-• Whether plenary.nvim is installed.
+• Whether `curl` is on your PATH, and its version.
 
 ==============================================================================
 3. INSTALLATION                                        *spacetime-installation*
@@ -46,7 +46,6 @@ With lazy.nvim: >lua
 
     {
       "krisajenkins/spacetime.nvim",
-      dependencies = { "nvim-lua/plenary.nvim" },
       config = function()
         require("spacetime").setup()
       end,

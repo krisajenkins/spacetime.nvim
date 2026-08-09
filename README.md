@@ -9,7 +9,7 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 
 - Neovim >= 0.11.0
 - The `spacetime` CLI >= 2.0.0 on your `PATH`
-- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
+- `curl` on your `PATH` — used for all HTTP requests to SpacetimeDB
 
 Run `:checkhealth spacetime` to verify all three.
 
@@ -20,7 +20,6 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "krisajenkins/spacetime.nvim",
-  dependencies = { "nvim-lua/plenary.nvim" },
   config = function()
     require("spacetime").setup()
   end,
@@ -46,8 +45,8 @@ automatically; otherwise:
 nix develop
 ```
 
-That provides `neovim`, `lua-language-server`, `luacheck`, `stylua` and the
-`spacetime` CLI.
+That provides `neovim`, `lua-language-server`, `luacheck`, `stylua`, `curl` and
+the `spacetime` CLI.
 
 ```bash
 make                                  # typecheck + test (the default target)
@@ -60,7 +59,7 @@ make helptags                         # regenerate doc/tags after editing doc/
 ```
 
 Tests use [mini.test](https://github.com/echasnovski/mini.test); `make` clones
-it and plenary into `deps/` on first run.
+it into `deps/` on first run.
 
 ### Nix pins
 

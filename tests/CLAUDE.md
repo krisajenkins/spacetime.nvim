@@ -6,9 +6,8 @@ Testing-specific guidance for Claude Code when working with this test suite.
 
 Tests use [mini.test](https://github.com/echasnovski/mini.test), cloned into
 `deps/mini.nvim` by the Makefile. The runner boots headless Neovim on
-`scripts/minimal_init.lua`, which puts the repo root, `deps/mini.nvim` and
-`deps/plenary.nvim` on the runtimepath — nothing else. Your real Neovim config
-is NOT loaded.
+`scripts/minimal_init.lua`, which puts the repo root and `deps/mini.nvim` on the
+runtimepath — nothing else. Your real Neovim config is NOT loaded.
 
 ### Basic structure
 
@@ -43,8 +42,8 @@ local T = new_set({                          -- standard hooks + extra setup
 })
 ```
 
-The helper restarts the child per case, adds plenary to its runtimepath and
-installs an `expect` global inside the child.
+The helper restarts the child per case and installs an `expect` global inside
+the child.
 
 **`expect` inside `child.lua()` is the child's global, not the parent's.** The
 helper installs it; if you build a child by hand you must do
@@ -113,6 +112,6 @@ at require time.
 
 ## Test Environment Assumptions
 
-`tests/test_health.lua` asserts the `spacetime` CLI and plenary are both
+`tests/test_health.lua` asserts the `spacetime` CLI and `curl` are both
 present, which holds inside `nix develop` and in CI. Running `make test` from a
 bare shell without the CLI on `PATH` will fail that case legitimately.

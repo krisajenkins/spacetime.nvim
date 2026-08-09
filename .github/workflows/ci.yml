@@ -55,9 +55,8 @@ jobs:
           purge-created: 0
           purge-primary-key: never
 
-      # `make` clones mini.nvim and plenary.nvim into deps/ on every run; cache
-      # them so we skip the re-clone. Keyed on the Makefile since that's where the
-      # clone URLs live.
+      # `make` clones mini.nvim into deps/ on every run; cache it so we skip the
+      # re-clone. Keyed on the Makefile since that's where the clone URL lives.
       - name: Cache test dependencies
         uses: actions/cache@v4
         with:

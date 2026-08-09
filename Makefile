@@ -2,11 +2,11 @@
 all: typecheck test
 
 # Run all test files
-test: deps/mini.nvim deps/plenary.nvim
+test: deps/mini.nvim
 	nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c "qa!"
 
 # Run test from file at `$FILE` environment variable
-test_file: deps/mini.nvim deps/plenary.nvim
+test_file: deps/mini.nvim
 	nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file('$(FILE)')" -c "qa!"
 
 # Format Lua code with stylua
@@ -48,9 +48,5 @@ helptags:
 deps/mini.nvim:
 	@mkdir -p deps
 	git clone --filter=blob:none https://github.com/echasnovski/mini.nvim $@
-
-deps/plenary.nvim:
-	@mkdir -p deps
-	git clone --filter=blob:none https://github.com/nvim-lua/plenary.nvim $@
 
 .PHONY: all test test_file format check-format typecheck luacheck lua-ls helptags

@@ -2,8 +2,8 @@
 --
 -- Most integration tests open with the same boilerplate: create a child
 -- Neovim, then a `new_set` whose `pre_case` restarts the child on
--- `scripts/minimal_init.lua`, clears `readonly`, adds plenary to the
--- runtimepath and installs the `expect` global, with `post_once = child.stop`.
+-- `scripts/minimal_init.lua`, clears `readonly` and installs the `expect`
+-- global, with `post_once = child.stop`.
 -- This helper packages that up.
 --
 -- Usage:
@@ -40,7 +40,6 @@ local function make()
 				pre_case = function()
 					child.restart({ "-u", "scripts/minimal_init.lua" })
 					child.bo.readonly = false
-					child.cmd([[ set rtp+=deps/plenary.nvim ]])
 					child.lua([[ expect = require('mini.test').expect ]])
 					if opts.pre_case then
 						opts.pre_case(child)
