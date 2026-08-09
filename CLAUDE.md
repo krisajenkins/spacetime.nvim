@@ -118,3 +118,30 @@ This is a Jujutsu (jj) repository with git colocation. Use `jj` commands; never
 `.github/workflows/ci.yml` runs `make` and `make check-format` inside
 `nix develop` on push to main and on PRs. `.github/workflows/release.yml` cuts a
 GitHub release from a pushed `v*` tag.
+
+The repo is private for now, so CI results are not the gate — run the verify
+pipeline locally before calling anything done.
+
+## Roadmap
+
+`ROADMAP.md` is the plan of record: the decisions taken (and why the rejected
+alternatives were rejected), facts probed against a live server, and an ordered
+task list. Each task is tracked as a GitHub issue whose body is self-contained.
+Read the roadmap section a task names before implementing it — the reasoning
+behind a constraint is usually there rather than in the issue.
+
+<!-- agent-conventions: maintained by work-issues / work-todos -->
+## Project conventions (cached)
+
+- Verify: `nix develop -c make`; `nix develop -c make check-format`
+- Format: `nix develop -c make format`
+- Publish: none
+- Auto-close: `Closes #N`
+- Blocked label: `blocked`
+<!-- /agent-conventions -->
+
+`nix develop -c` is the robust form: it works whether or not `direnv` has
+already loaded the environment. Under an active `direnv`, bare `make` is
+equivalent. Neither `luacheck`, `stylua` nor `lua-language-server` is on the
+PATH without it, so a bare `make` outside the shell fails as *missing tools*,
+not as a real failure.
