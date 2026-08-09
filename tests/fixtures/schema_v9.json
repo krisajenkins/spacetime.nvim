@@ -1,0 +1,2586 @@
+{
+  "typespace": {
+    "types": [
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "primary_email" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "display_name" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "picture_url" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "is_admin" },
+              "algebraic_type": { "Bool": [] }
+            },
+            {
+              "name": { "some": "created_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "id" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": { "some": "__identity__" },
+                      "algebraic_type": { "U256": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            { "name": { "some": "user_id" }, "algebraic_type": { "U64": [] } },
+            { "name": { "some": "provider" }, "algebraic_type": { "Ref": 2 } },
+            {
+              "name": { "some": "linked_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Sum": {
+          "variants": [
+            {
+              "name": { "some": "google" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            },
+            {
+              "name": { "some": "spacetime" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "host_user_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "max_capacity" },
+              "algebraic_type": { "U32": [] }
+            },
+            { "name": { "some": "rrule" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "start_anchor_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "end_anchor_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "cancelled" },
+              "algebraic_type": { "Bool": [] }
+            },
+            {
+              "name": { "some": "tags" },
+              "algebraic_type": { "Array": { "String": [] } }
+            },
+            {
+              "name": { "some": "created_by_user_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "created_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "updated_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "template_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "start_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "title_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "description_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "duration_override_minutes" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "capacity_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "start_override_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "cancelled" },
+              "algebraic_type": { "Bool": [] }
+            },
+            {
+              "name": { "some": "booking_count" },
+              "algebraic_type": { "U32": [] }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            { "name": { "some": "user_id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "booked_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "scheduled_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "scheduled_at" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "Interval" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": { "some": "__time_duration_micros__" },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "Time" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "scheduled_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "scheduled_at" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "Interval" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": { "some": "__time_duration_micros__" },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "Time" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "security_id" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "code" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            { "name": { "some": "scale" }, "algebraic_type": { "U8": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "size" }, "algebraic_type": { "U32": [] } },
+            {
+              "name": { "some": "price_pence" },
+              "algebraic_type": { "U32": [] }
+            },
+            { "name": { "some": "active" }, "algebraic_type": { "Bool": [] } },
+            {
+              "name": { "some": "updated_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "transaction_id" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": { "some": "__uuid__" },
+                      "algebraic_type": { "U128": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "statement_date" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "physical_date" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "posted_by" },
+              "algebraic_type": { "U64": [] }
+            },
+            { "name": { "some": "kind" }, "algebraic_type": { "Ref": 11 } }
+          ]
+        }
+      },
+      {
+        "Sum": {
+          "variants": [
+            {
+              "name": { "some": "sale" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            },
+            {
+              "name": { "some": "grant" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            },
+            {
+              "name": { "some": "booking" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            },
+            {
+              "name": { "some": "cancelBooking" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            },
+            {
+              "name": { "some": "redemption" },
+              "algebraic_type": { "Product": { "elements": [] } }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "entry_id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "transaction_id" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": { "some": "__uuid__" },
+                      "algebraic_type": { "U128": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "security_id" },
+              "algebraic_type": { "String": [] }
+            },
+            { "name": { "some": "amount" }, "algebraic_type": { "I64": [] } },
+            {
+              "name": { "some": "account" },
+              "algebraic_type": { "Array": { "String": [] } }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "balance_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "path_str" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "security_id" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "account" },
+              "algebraic_type": { "Array": { "String": [] } }
+            },
+            { "name": { "some": "amount" }, "algebraic_type": { "I128": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "host_user_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "host_email" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "max_capacity" },
+              "algebraic_type": { "U32": [] }
+            },
+            { "name": { "some": "rrule" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "start_anchor_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "end_anchor_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "cancelled" },
+              "algebraic_type": { "Bool": [] }
+            },
+            {
+              "name": { "some": "created_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "updated_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      { "Product": { "elements": [] } },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "user_id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "pass_count" },
+              "algebraic_type": { "U32": [] }
+            },
+            { "name": { "some": "note" }, "algebraic_type": { "String": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "email" }, "algebraic_type": { "String": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "host_email" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "max_capacity" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "start_anchor_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "end_anchor_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "rrule" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      { "Product": { "elements": [] } },
+      { "Product": { "elements": [] } },
+      { "Product": { "elements": [] } },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "user_id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "primary_email" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "display_name" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "picture_url" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "is_admin" },
+              "algebraic_type": { "Bool": [] }
+            },
+            { "name": { "some": "is_host" }, "algebraic_type": { "Bool": [] } },
+            {
+              "name": { "some": "passes_outstanding" },
+              "algebraic_type": { "U32": [] }
+            }
+          ]
+        }
+      },
+      { "Product": { "elements": [] } },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "booked_at" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      { "Product": { "elements": [] } },
+      { "Product": { "elements": [] } },
+      { "Product": { "elements": [] } },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "instance_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "template_id" },
+              "algebraic_type": { "U64": [] }
+            },
+            {
+              "name": { "some": "start_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": { "U32": [] }
+            },
+            { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            { "name": { "some": "capacity" }, "algebraic_type": { "U32": [] } },
+            {
+              "name": { "some": "host_display_name" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "booking_count" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "cancelled" },
+              "algebraic_type": { "Bool": [] }
+            }
+          ]
+        }
+      },
+      { "Product": { "elements": [] } },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "user_id" }, "algebraic_type": { "U64": [] } },
+            { "name": { "some": "pack_size" }, "algebraic_type": { "U32": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "arg" }, "algebraic_type": { "Ref": 6 } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "arg" }, "algebraic_type": { "Ref": 7 } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            {
+              "name": { "some": "slots" },
+              "algebraic_type": { "Array": { "Ref": 38 } }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "slug" }, "algebraic_type": { "String": [] } },
+            { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "host_email" },
+              "algebraic_type": { "String": [] }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "max_capacity" },
+              "algebraic_type": { "U32": [] }
+            },
+            {
+              "name": { "some": "start_anchor_utc" },
+              "algebraic_type": {
+                "Product": {
+                  "elements": [
+                    {
+                      "name": {
+                        "some": "__timestamp_micros_since_unix_epoch__"
+                      },
+                      "algebraic_type": { "I64": [] }
+                    }
+                  ]
+                }
+              }
+            },
+            { "name": { "some": "rrule" }, "algebraic_type": { "String": [] } }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "size" }, "algebraic_type": { "U32": [] } },
+            {
+              "name": { "some": "price_pence" },
+              "algebraic_type": { "U32": [] }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "title_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "description_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "duration_override_minutes" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "capacity_override" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "start_override_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Product": {
+          "elements": [
+            { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+            {
+              "name": { "some": "title" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "description" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "host_email" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "duration_minutes" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "max_capacity" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "U32": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "start_anchor_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "end_anchor_utc" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": {
+                        "Product": {
+                          "elements": [
+                            {
+                              "name": {
+                                "some": "__timestamp_micros_since_unix_epoch__"
+                              },
+                              "algebraic_type": { "I64": [] }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": { "some": "rrule" },
+              "algebraic_type": {
+                "Sum": {
+                  "variants": [
+                    {
+                      "name": { "some": "some" },
+                      "algebraic_type": { "String": [] }
+                    },
+                    {
+                      "name": { "some": "none" },
+                      "algebraic_type": { "Product": { "elements": [] } }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "tables": [
+    {
+      "name": "booking",
+      "product_type_ref": 5,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "booking_id_idx_btree" },
+          "accessor_name": { "some": "id" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "booking_instance_id_idx_btree" },
+          "accessor_name": { "some": "booking_instance_id" },
+          "algorithm": { "BTree": [1] }
+        },
+        {
+          "name": { "some": "booking_user_id_idx_btree" },
+          "accessor_name": { "some": "booking_user_id" },
+          "algorithm": { "BTree": [2] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "booking_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "booking_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "class_instance",
+      "product_type_ref": 4,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "class_instance_id_idx_btree" },
+          "accessor_name": { "some": "id" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "class_instance_start_utc_idx_btree" },
+          "accessor_name": { "some": "class_instance_start_utc" },
+          "algorithm": { "BTree": [2] }
+        },
+        {
+          "name": { "some": "class_instance_template_id_idx_btree" },
+          "accessor_name": { "some": "class_instance_template_id" },
+          "algorithm": { "BTree": [1] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "class_instance_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "class_instance_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "class_template",
+      "product_type_ref": 3,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "class_template_cancelled_idx_btree" },
+          "accessor_name": { "some": "class_template_cancelled" },
+          "algorithm": { "BTree": [9] }
+        },
+        {
+          "name": { "some": "class_template_host_user_id_idx_btree" },
+          "accessor_name": { "some": "class_template_host_user_id" },
+          "algorithm": { "BTree": [3] }
+        },
+        {
+          "name": { "some": "class_template_id_idx_btree" },
+          "accessor_name": { "some": "id" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "class_template_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "class_template_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "identity",
+      "product_type_ref": 1,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "identity_id_idx_btree" },
+          "accessor_name": { "some": "id" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "identity_user_id_idx_btree" },
+          "accessor_name": { "some": "identity_user_id" },
+          "algorithm": { "BTree": [1] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "identity_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "ledger_balance",
+      "product_type_ref": 13,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "ledger_balance_balance_id_idx_btree" },
+          "accessor_name": { "some": "balanceId" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "ledger_balance_path_str_security_id_idx_btree" },
+          "accessor_name": { "some": "ledger_balance_by_path_sec" },
+          "algorithm": { "BTree": [1, 2] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "ledger_balance_balance_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "ledger_balance_balance_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "ledger_entry",
+      "product_type_ref": 12,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "ledger_entry_entry_id_idx_btree" },
+          "accessor_name": { "some": "entryId" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "ledger_entry_security_id_idx_btree" },
+          "accessor_name": { "some": "ledger_entry_by_security" },
+          "algorithm": { "BTree": [2] }
+        },
+        {
+          "name": { "some": "ledger_entry_transaction_id_idx_btree" },
+          "accessor_name": { "some": "ledger_entry_by_transaction" },
+          "algorithm": { "BTree": [1] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "ledger_entry_entry_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "ledger_entry_entry_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "ledger_transaction",
+      "product_type_ref": 10,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "ledger_transaction_kind_idx_btree" },
+          "accessor_name": { "some": "ledger_transaction_kind" },
+          "algorithm": { "BTree": [5] }
+        },
+        {
+          "name": { "some": "ledger_transaction_statement_date_idx_btree" },
+          "accessor_name": { "some": "ledger_transaction_statement" },
+          "algorithm": { "BTree": [2] }
+        },
+        {
+          "name": { "some": "ledger_transaction_transaction_id_idx_btree" },
+          "accessor_name": { "some": "transactionId" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "ledger_transaction_transaction_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "materialize_tick",
+      "product_type_ref": 6,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "materialize_tick_scheduled_id_idx_btree" },
+          "accessor_name": { "some": "scheduledId" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "materialize_tick_scheduled_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "materialize_tick_scheduled_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": {
+        "some": {
+          "name": { "some": "materialize_tick_sched" },
+          "reducer_name": "run_materialize_tick",
+          "scheduled_at_column": 1
+        }
+      },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "pass_pack",
+      "product_type_ref": 9,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "pass_pack_size_idx_btree" },
+          "accessor_name": { "some": "size" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "pass_pack_size_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "redemption_tick",
+      "product_type_ref": 7,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "redemption_tick_instance_id_idx_btree" },
+          "accessor_name": { "some": "redemption_tick_instance_id" },
+          "algorithm": { "BTree": [2] }
+        },
+        {
+          "name": { "some": "redemption_tick_scheduled_id_idx_btree" },
+          "accessor_name": { "some": "scheduledId" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "redemption_tick_scheduled_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "redemption_tick_scheduled_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": {
+        "some": {
+          "name": { "some": "redemption_tick_sched" },
+          "reducer_name": "run_redemption_tick",
+          "scheduled_at_column": 1
+        }
+      },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "security",
+      "product_type_ref": 8,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "security_security_id_idx_btree" },
+          "accessor_name": { "some": "securityId" },
+          "algorithm": { "BTree": [0] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "security_security_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        }
+      ],
+      "sequences": [],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    },
+    {
+      "name": "user",
+      "product_type_ref": 0,
+      "primary_key": [0],
+      "indexes": [
+        {
+          "name": { "some": "user_id_idx_btree" },
+          "accessor_name": { "some": "id" },
+          "algorithm": { "BTree": [0] }
+        },
+        {
+          "name": { "some": "user_primary_email_idx_btree" },
+          "accessor_name": { "some": "primaryEmail" },
+          "algorithm": { "BTree": [1] }
+        }
+      ],
+      "constraints": [
+        {
+          "name": { "some": "user_id_key" },
+          "data": { "Unique": { "columns": [0] } }
+        },
+        {
+          "name": { "some": "user_primary_email_key" },
+          "data": { "Unique": { "columns": [1] } }
+        }
+      ],
+      "sequences": [
+        {
+          "name": { "some": "user_id_seq" },
+          "column": 0,
+          "start": { "none": [] },
+          "min_value": { "none": [] },
+          "max_value": { "none": [] },
+          "increment": 1
+        }
+      ],
+      "schedule": { "none": [] },
+      "table_type": { "User": [] },
+      "table_access": { "Private": [] }
+    }
+  ],
+  "reducers": [
+    {
+      "name": "admin_grant_passes",
+      "params": {
+        "elements": [
+          { "name": { "some": "userId" }, "algebraic_type": { "U64": [] } },
+          { "name": { "some": "passCount" }, "algebraic_type": { "U32": [] } },
+          { "name": { "some": "note" }, "algebraic_type": { "String": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "book",
+      "params": {
+        "elements": [
+          { "name": { "some": "instanceId" }, "algebraic_type": { "U64": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "bootstrap_first_admin",
+      "params": {
+        "elements": [
+          { "name": { "some": "email" }, "algebraic_type": { "String": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "cancel_booking",
+      "params": {
+        "elements": [
+          { "name": { "some": "instanceId" }, "algebraic_type": { "U64": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "cancel_instance",
+      "params": {
+        "elements": [
+          { "name": { "some": "id" }, "algebraic_type": { "U64": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "cancel_template",
+      "params": {
+        "elements": [
+          { "name": { "some": "id" }, "algebraic_type": { "U64": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "create_template",
+      "params": {
+        "elements": [
+          { "name": { "some": "title" }, "algebraic_type": { "String": [] } },
+          {
+            "name": { "some": "description" },
+            "algebraic_type": { "String": [] }
+          },
+          {
+            "name": { "some": "hostEmail" },
+            "algebraic_type": { "String": [] }
+          },
+          {
+            "name": { "some": "durationMinutes" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "U32": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "maxCapacity" },
+            "algebraic_type": { "U32": [] }
+          },
+          {
+            "name": { "some": "startAnchorUtc" },
+            "algebraic_type": {
+              "Product": {
+                "elements": [
+                  {
+                    "name": { "some": "__timestamp_micros_since_unix_epoch__" },
+                    "algebraic_type": { "I64": [] }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "endAnchorUtc" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": {
+                      "Product": {
+                        "elements": [
+                          {
+                            "name": {
+                              "some": "__timestamp_micros_since_unix_epoch__"
+                            },
+                            "algebraic_type": { "I64": [] }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "rrule" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "init",
+      "params": { "elements": [] },
+      "lifecycle": { "some": { "Init": [] } }
+    },
+    {
+      "name": "kick_ledger_seed",
+      "params": { "elements": [] },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "kick_materializer",
+      "params": { "elements": [] },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "on_connect",
+      "params": { "elements": [] },
+      "lifecycle": { "some": { "OnConnect": [] } }
+    },
+    {
+      "name": "on_disconnect",
+      "params": { "elements": [] },
+      "lifecycle": { "some": { "OnDisconnect": [] } }
+    },
+    {
+      "name": "record_sale",
+      "params": {
+        "elements": [
+          { "name": { "some": "userId" }, "algebraic_type": { "U64": [] } },
+          { "name": { "some": "packSize" }, "algebraic_type": { "U32": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "run_materialize_tick",
+      "params": {
+        "elements": [
+          { "name": { "some": "arg" }, "algebraic_type": { "Ref": 6 } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "run_redemption_tick",
+      "params": {
+        "elements": [
+          { "name": { "some": "arg" }, "algebraic_type": { "Ref": 7 } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "seed_templates",
+      "params": {
+        "elements": [
+          {
+            "name": { "some": "slots" },
+            "algebraic_type": { "Array": { "Ref": 38 } }
+          }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "set_pass_pack_price",
+      "params": {
+        "elements": [
+          { "name": { "some": "size" }, "algebraic_type": { "U32": [] } },
+          { "name": { "some": "pricePence" }, "algebraic_type": { "U32": [] } }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "update_instance",
+      "params": {
+        "elements": [
+          { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+          {
+            "name": { "some": "titleOverride" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "descriptionOverride" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "durationOverrideMinutes" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "U32": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "capacityOverride" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "U32": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "startOverrideUtc" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": {
+                      "Product": {
+                        "elements": [
+                          {
+                            "name": {
+                              "some": "__timestamp_micros_since_unix_epoch__"
+                            },
+                            "algebraic_type": { "I64": [] }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    },
+    {
+      "name": "update_template",
+      "params": {
+        "elements": [
+          { "name": { "some": "id" }, "algebraic_type": { "U64": [] } },
+          {
+            "name": { "some": "title" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "description" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "hostEmail" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "durationMinutes" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "U32": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "maxCapacity" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "U32": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "startAnchorUtc" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": {
+                      "Product": {
+                        "elements": [
+                          {
+                            "name": {
+                              "some": "__timestamp_micros_since_unix_epoch__"
+                            },
+                            "algebraic_type": { "I64": [] }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "endAnchorUtc" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": {
+                      "Product": {
+                        "elements": [
+                          {
+                            "name": {
+                              "some": "__timestamp_micros_since_unix_epoch__"
+                            },
+                            "algebraic_type": { "I64": [] }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": { "some": "rrule" },
+            "algebraic_type": {
+              "Sum": {
+                "variants": [
+                  {
+                    "name": { "some": "some" },
+                    "algebraic_type": { "String": [] }
+                  },
+                  {
+                    "name": { "some": "none" },
+                    "algebraic_type": { "Product": { "elements": [] } }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "lifecycle": { "none": [] }
+    }
+  ],
+  "types": [
+    {
+      "name": { "scope": [], "name": "AdminGrantPasses" },
+      "ty": 16,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "AdminTemplateRow" },
+      "ty": 14,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "AdminTemplatesView" },
+      "ty": 15,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "Book" },
+      "ty": 17,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "Booking" },
+      "ty": 5,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "BootstrapFirstAdmin" },
+      "ty": 18,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "CancelBooking" },
+      "ty": 19,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "CancelInstance" },
+      "ty": 20,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "CancelTemplate" },
+      "ty": 21,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "ClassInstance" },
+      "ty": 4,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "ClassTemplate" },
+      "ty": 3,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "CreateTemplate" },
+      "ty": 22,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "Identity" },
+      "ty": 1,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "IdentityProvider" },
+      "ty": 2,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "Init" },
+      "ty": 23,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "KickLedgerSeed" },
+      "ty": 24,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "KickMaterializer" },
+      "ty": 25,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "LedgerBalance" },
+      "ty": 13,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "LedgerEntry" },
+      "ty": 12,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "LedgerTransaction" },
+      "ty": 10,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "LedgerTxnKind" },
+      "ty": 11,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "MaterializeTick" },
+      "ty": 6,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "MeRow" },
+      "ty": 26,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "MeView" },
+      "ty": 27,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "MyBookingRow" },
+      "ty": 28,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "MyBookingsView" },
+      "ty": 29,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "OnConnect" },
+      "ty": 30,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "OnDisconnect" },
+      "ty": 31,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "PassPack" },
+      "ty": 9,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "PublicClassRow" },
+      "ty": 32,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "PublicClassesView" },
+      "ty": 33,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "RecordSale" },
+      "ty": 34,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "RedemptionTick" },
+      "ty": 7,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "RunMaterializeTick" },
+      "ty": 35,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "RunRedemptionTick" },
+      "ty": 36,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "Security" },
+      "ty": 8,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "SeedTemplateArg" },
+      "ty": 38,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "SeedTemplates" },
+      "ty": 37,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "SetPassPackPrice" },
+      "ty": 39,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "UpdateInstance" },
+      "ty": 40,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "UpdateTemplate" },
+      "ty": 41,
+      "custom_ordering": true
+    },
+    {
+      "name": { "scope": [], "name": "User" },
+      "ty": 0,
+      "custom_ordering": true
+    }
+  ],
+  "misc_exports": [
+    {
+      "ColumnDefaultValue": {
+        "table": "class_instance",
+        "col_id": 9,
+        "value": "00000000"
+      }
+    },
+    {
+      "View": {
+        "name": "admin_templates_view",
+        "index": 0,
+        "is_public": true,
+        "is_anonymous": false,
+        "params": { "elements": [] },
+        "return_type": { "Array": { "Ref": 14 } }
+      }
+    },
+    {
+      "View": {
+        "name": "me_view",
+        "index": 1,
+        "is_public": true,
+        "is_anonymous": false,
+        "params": { "elements": [] },
+        "return_type": { "Array": { "Ref": 26 } }
+      }
+    },
+    {
+      "View": {
+        "name": "my_bookings_view",
+        "index": 2,
+        "is_public": true,
+        "is_anonymous": false,
+        "params": { "elements": [] },
+        "return_type": { "Array": { "Ref": 28 } }
+      }
+    },
+    {
+      "View": {
+        "name": "public_classes_view",
+        "index": 0,
+        "is_public": true,
+        "is_anonymous": true,
+        "params": { "elements": [] },
+        "return_type": { "Array": { "Ref": 32 } }
+      }
+    }
+  ],
+  "row_level_security": []
+}

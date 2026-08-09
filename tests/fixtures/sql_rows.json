@@ -1,0 +1,40 @@
+[
+  {
+    "schema": {
+      "elements": [
+        {
+          "name": { "some": "security_id" },
+          "algebraic_type": { "String": [] }
+        },
+        {
+          "name": { "some": "description" },
+          "algebraic_type": { "String": [] }
+        },
+        {
+          "name": { "some": "code" },
+          "algebraic_type": {
+            "Sum": {
+              "variants": [
+                {
+                  "name": { "some": "some" },
+                  "algebraic_type": { "String": [] }
+                },
+                {
+                  "name": { "some": "none" },
+                  "algebraic_type": { "Product": { "elements": [] } }
+                }
+              ]
+            }
+          }
+        },
+        { "name": { "some": "scale" }, "algebraic_type": { "U8": [] } }
+      ]
+    },
+    "rows": [
+      ["GBP", "British Pound Sterling", [0, "£"], 2],
+      ["PASS", "Gym class pass — 1 unit redeems 1 class booking", [0, "🎟"], 0]
+    ],
+    "total_duration_micros": 167,
+    "stats": { "rows_inserted": 0, "rows_deleted": 0, "rows_updated": 0 }
+  }
+]

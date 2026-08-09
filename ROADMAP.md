@@ -13,7 +13,9 @@ SpacetimeDB client library underneath (the role `gleam-spacetimedb` plays for Gl
 | Decision | Choice |
 |---|---|
 | Transport | **Direct HTTP** via `curl`, mirroring `spacetimedb-tui`. Not the `spacetime` CLI. |
-| UI | **Neovim-native**: sidebar tree buffer + content buffers + `:Spacetime*` commands. Not a TUI clone. |
+| UI | **Neovim-native**: sidebar tree buffer + content buffers + `:Spacetime*` commands. Not a TUI clone, and not a wrapper around the `spacetimedb-tui` binary. |
+| Entry point | **`:Spacetime` opens the full layout** — sidebar *and* content window — not just the sidebar. One front door; the other commands are shortcuts into it. |
+| Project awareness | A repo's `spacetime.json` / `spacetime.local.json` selects the server and database, so `:Spacetime` inside a module repo opens the right database. |
 | v1 scope | Browse databases → tables → schema → rows; log viewer with follow. |
 | Writes | Reducer calls only, and not in v1. No INSERT/UPDATE/DELETE. |
 | Live subscriptions | **Deferred.** v1 needs no WebSocket at all — log follow is plain HTTP streaming. |
@@ -69,6 +71,26 @@ POST /v1/database/{db}/call/{reducer}        body: JSON array of args
    databases contains both, so `#s` is unusable for column layout.
 8. SQL rows are **positional arrays**; sums arrive as `[variant_index, payload]`;
    Timestamp is a one-element array `[1780864718837447]`.
+9. **`spacetime.json` is a real convention**, confirmed by reading five of the user's own
+   module repos rather than inferring a shape. Keys seen: `server`, `database`,
+   `module-path`, `generate[]`, `dev.run`. `spacetime.local.json` sits beside it as the
+   per-developer override and is **`.gitignore`d in 3 of the 5** — so it must be treated
+   as optional and possibly absent, never required. Only `server` and `database` matter
+   to a browser.
+
+**Fixtures are already captured and committed** to `tests/fixtures/`, so every task below
+is executable offline with no token and no network:
+
+| File | What it pins down |
+|---|---|
+| `schema_v10.json` (41 KB) | the sectioned v10 shape — task 17's primary path |
+| `schema_v9.json` (35 KB) | the flat v9 shape — task 17's fallback path |
+| `sql_rows.json` | `£` and `🎟` in real rows, plus an Option encoded as `[0,"£"]` |
+| `sql_bigint.json` | U256 identity as a hex *string* beside a U128 as a bare *number* |
+| `logs.ndjson` | 11 real NDJSON log lines |
+
+All five were scanned for tokens, JWTs and e-mail addresses before committing; the only
+identifier in them is the account identity already recorded in fact 3.
 
 ---
 
@@ -92,12 +114,12 @@ lua/spacetime/lib/       -- no buffers, no windows, no user interaction
   logs.lua        NDJSON line -> log entry; level ordering
 
 lua/spacetime/
-  config.lua      resolve connection from setup opts + cli.toml + env
+  config.lua      resolve connection from setup opts + env + spacetime.json + cli.toml
   state.lua       the one module-level state table; caches, in-flight registry, debounce
   commands.lua    :Spacetime* definitions and completion
   ui/
     highlights.lua  default-linked highlight groups
-    buffer.lua      scratch-buffer/window primitives
+    buffer.lua      scratch-buffer primitives + the idempotent sidebar/content layout
     tree.lua        sidebar: databases -> tables
     grid.lua        pure row-grid layout (widths, truncation, byte offsets, spans)
     rows.lua        rows buffer controller: fetch, sort, page, yank
@@ -405,8 +427,26 @@ be one commit.
    be ignored in favour of `spacetimedb_token`.
 8. **`config.lua`** — XDG-aware `cli_config_path` (injectable for tests), host:port
    splitting with protocol-derived defaults (443/80, not 3000), and a pure
-   `resolve(opts, env, cli_cfg)`. Port the resolution test cases from the TUI's
-   `src/config.rs` — they are the specification. → `tests/test_config.lua`
+   `resolve(opts, env, project_cfg, cli_cfg)`. Port the resolution test cases from the
+   TUI's `src/config.rs` — they are the specification. → `tests/test_config.lua`
+
+   Also **per-project config discovery**, since a repo usually knows which database it
+   means. Walk up from the current buffer's directory (falling back to `getcwd()`) to the
+   VCS root, testing for `.jj` **or** `.git` at each level — `.git` may be a *file* in
+   worktrees and submodules, so test existence, not directory-ness, and stop at the first
+   hit so a colocated jj repo resolves once. Read `spacetime.json` there, then overlay
+   `spacetime.local.json` on top of it. Only `server` and `database` concern us;
+   `module-path`, `generate` and `dev` belong to the CLI's build flow and are ignored.
+   `server` is a cli.toml nickname, so it resolves *through* the existing chain rather
+   than around it. Full precedence, highest first:
+
+   ```
+   setup() opts  >  env  >  spacetime.local.json  >  spacetime.json  >  cli.toml default_server
+   ```
+
+   A missing or malformed project file is not an error — fall through to the next source.
+   → `tests/test_config.lua` covers both files present, local-only, neither, malformed
+   JSON, and a `.git` *file* rather than a directory.
 9. **`lib/blake3.lua`** — single-chunk only. Gate it on the official BLAKE3 test vectors
    at 0/1/2/3/63/64/65/127/1023 bytes, and make it `error()` above 1023 rather than
    silently returning a wrong digest. → `tests/test_blake3.lua`
@@ -448,7 +488,8 @@ be one commit.
     (`?version=10` → on 4xx retry `?version=9`) normalising into the same model, with views
     lifted out of `misc_exports` and `visibility` left `nil` — the UI must treat unknown
     visibility as "assume callable" rather than hiding reducers on old servers.
-    → fixtures for **both** versions captured from the live account.
+    → test against the committed `tests/fixtures/schema_v10.json` and `schema_v9.json`,
+    which are the same module in both shapes.
 18. **`lib/value.lua`** — `AlgebraicType` → label, and `(value, atype, typespace)` →
     display string + highlight class. Covers Ref (depth-limited, cycle-safe), Product,
     Sum as `[idx, payload]`, Option, Array, and the four magic newtypes
@@ -464,7 +505,11 @@ be one commit.
     guard, `debounce(key, ms, fn)` on `vim.uv`, cache accessors, `reset()`.
     → `tests/test_state.lua` proves cancel-on-restart, stale-seq drop, and debounce coalescing.
 21. **`ui/buffer.lua`** — get-or-create by `spacetime://…` name, `set_lines` with
-    modifiable toggling, sidebar and split placement, namespace.
+    modifiable toggling, namespace, and the **layout primitive**: open-or-focus a sidebar
+    window of fixed width alongside a content window, reusing either if it already exists
+    rather than stacking duplicates. `open_layout()` returns both window handles and is
+    idempotent, so re-running `:Spacetime` focuses the existing layout instead of
+    splitting again.
 22. **`commands.lua` + registrations** — `:Spacetime`, `:SpacetimeToggle`,
     `:SpacetimeConnect [nick]`, `:SpacetimeDatabases`, `:SpacetimeTables [db]`,
     `:SpacetimeRows [db.]tbl`, `:SpacetimeSchema [db.]tbl`, `:SpacetimeLogs[!] [db]`,
@@ -475,8 +520,12 @@ be one commit.
 
 23. **Pure `tree.build_lines(model)`** → lines + line→node map. Collapsed/expanded,
     loading, error, and paused (`⏸`) states; tables grouped user / view / system.
-24. **`:Spacetime` opens the sidebar**, fetches databases, renders. Keymaps: `<CR>`/`o`,
-    `r` refresh, `q` close, `y` yank name, `gi` yank identity, `?` help.
+24. **`:Spacetime` opens the full layout** — the single front door. Sidebar plus content
+    window via `open_layout()`, then fetch databases and render the tree; the content
+    window shows a placeholder until something is selected. Keymaps in the sidebar:
+    `<CR>`/`o`, `r` refresh, `q` close the layout, `y` yank name, `gi` yank identity,
+    `?` help. If the project config (task 8) named a `database`, expand straight to it so
+    running `:Spacetime` inside a module repo lands where the user meant.
 25. **Expanding a database fetches its schema** (cached by db name) and renders
     tables/views/system tables. A `paused` error sets the flag and renders `⏸` with
     **exactly one request and no retry**.
@@ -539,11 +588,17 @@ reason for the library/UI split. `test_json`, `test_logger`, `test_clitoml`,
 `test_config`, `test_blake3`, `test_identity`, `test_http`, `test_client`, `test_sql`,
 `test_schema`, `test_value`, `test_logs`, `test_state`, `test_grid`, `test_tree`.
 
-**Fixtures captured from the live 2.8.0 server** into `tests/fixtures/`: `schema_v10.json`
-and `schema_v9.json` (the same module in both, so the fallback path is tested against real
-data — including a module with camelCase source names so `ExplicitNames` is exercised),
-`sql_rows.json` (must include the real `£` and `🎟` values and the U128 `connection_id`),
-`logs.ndjson`. These are faster, deterministic and reviewable in a diff.
+**Fixtures are already captured** from the live 2.8.0 server and committed to
+`tests/fixtures/` — see the table under "Verified facts". `schema_v10.json` and
+`schema_v9.json` are the same module in both shapes, so the fallback path is tested against
+real data, including camelCase source names so `ExplicitNames` is exercised. They are
+faster, deterministic and reviewable in a diff, and they are what makes the task list
+executable without credentials.
+
+Re-capturing them is a manual, credentialed step and deliberately **not** part of any task.
+For the record, they came from `curl -K` against `/v1/database/spacegym/{schema,sql,logs}`
+with the token supplied on stdin. Anything a task still needs beyond these — synthetic
+edge cases like a malformed NDJSON line or a non-`Info` log level — the task writes itself.
 
 **Child-Neovim tests** for anything touching buffers, windows, commands, keymaps,
 autocmds or extmarks, stubbing `spacetime.lib.http` (not the client, so client logic is

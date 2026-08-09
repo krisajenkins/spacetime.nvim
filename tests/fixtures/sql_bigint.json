@@ -1,0 +1,21 @@
+[
+  {
+    "schema": {
+      "elements": [
+        { "name": { "some": "identity" }, "algebraic_type": { "U256": [] } },
+        {
+          "name": { "some": "connection_id" },
+          "algebraic_type": { "U128": [] }
+        }
+      ]
+    },
+    "rows": [
+      [
+        "0xc2005efe02e92547ddd4bd106e84a281ead78a30fa26f42e619d70b20917c3dd",
+        118584542101933595460429904643539362103
+      ]
+    ],
+    "total_duration_micros": 152,
+    "stats": { "rows_inserted": 0, "rows_deleted": 0, "rows_updated": 0 }
+  }
+]
