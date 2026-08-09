@@ -7,21 +7,21 @@ local M = {}
 
 -- Minimum supported versions. These mirror the Requirements section of the
 -- README/vimdoc. They may tighten as the plugin grows; keep them in sync.
-local MIN_NVIM = { 0, 9, 0 }
+local MIN_NVIM = { 0, 11, 0 }
 local MIN_SPACETIME = { 2, 0, 0 }
 
--- Feature-detect the vim.health API. The `start/ok/warn/error/info` names are
--- Neovim 0.10+; earlier versions (we support >= 0.9.0) used `report_*`.
+-- vim.health's `start/ok/warn/error/info` API is Neovim 0.10+; our 0.11 minimum
+-- guarantees it, so no `report_*` fallback is needed.
 local health = vim.health
 -- The report functions accept an optional advice arg (string|string[]); LLS's
 -- bundled stub mistypes several as single-arg, so pin the shim's signature.
 ---@type table<string, fun(msg: string, advice?: string[])>
 local h = {
-	start = health.start or health.report_start,
-	ok = health.ok or health.report_ok,
-	warn = health.warn or health.report_warn,
-	error = health.error or health.report_error,
-	info = health.info or health.report_info,
+	start = health.start,
+	ok = health.ok,
+	warn = health.warn,
+	error = health.error,
+	info = health.info,
 }
 
 -- Format a {major, minor, patch} table as "x.y.z".

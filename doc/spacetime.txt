@@ -21,7 +21,7 @@ infrastructure is in place, but no user-facing commands exist yet.
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
 
-• Neovim >= 0.9.0
+• Neovim >= 0.11.0
 • The `spacetime` command-line tool >= 2.0.0
 • plenary.nvim - required for async operations
 

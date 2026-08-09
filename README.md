@@ -7,7 +7,7 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 
 ## Requirements
 
-- Neovim >= 0.9.0
+- Neovim >= 0.11.0
 - The `spacetime` CLI >= 2.0.0 on your `PATH`
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 

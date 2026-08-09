@@ -82,4 +82,38 @@ T["reports ok for the CLI and plenary in the test environment"] = function()
 	restore()
 end
 
+T["reports ok for the pinned Neovim, which satisfies the 0.11 minimum"] = function()
+	local health, records, restore = with_stubbed_health()
+
+	health.check()
+
+	-- The pinned toolchain is well above the floor; if it ever drops below,
+	-- this fails loudly rather than silently warning.
+	expect.equality(any_contains(records.ok, "Neovim"), true)
+	expect.equality(any_contains(records.warn, "older than the minimum supported"), false)
+
+	restore()
+end
+
+T["warns when Neovim is older than the 0.11 minimum"] = function()
+	local health, records, restore = with_stubbed_health()
+
+	-- health.lua captures vim.health at require time but resolves vim.version at
+	-- call time, so an older Neovim can be faked without another reload. cmp and
+	-- parse must be delegated: check_spacetime uses both.
+	local original_version = vim.version
+	vim.version = setmetatable({ cmp = original_version.cmp, parse = original_version.parse }, {
+		__call = function()
+			return { major = 0, minor = 10, patch = 4 }
+		end,
+	})
+
+	health.check()
+
+	vim.version = original_version
+	restore()
+
+	expect.equality(any_contains(records.warn, "Neovim 0.10.4 is older than the minimum supported 0.11.0"), true)
+end
+
 return T
