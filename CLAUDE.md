@@ -199,15 +199,15 @@ constraint, because the argument for it is there rather than in the code — plu
 <!-- agent-conventions: maintained by work-issues / work-todos -->
 ## Project conventions (cached)
 
-- Verify: `nix develop -c make`; `nix develop -c make check-format`
-- Format: `nix develop -c make format`
+- Verify: `make`; `make check-format`
+- Format: `make format`
 - Publish: none
 - Auto-close: `Closes #N`
 - Blocked label: `blocked`
 <!-- /agent-conventions -->
 
-`nix develop -c` is the robust form: it works whether or not `direnv` has
+`nix develop -c <cmd>` is the robust form: it works whether or not `direnv` has
 already loaded the environment. Under an active `direnv`, bare `make` is
-equivalent. Neither `luacheck`, `stylua` nor `lua-language-server` is on the
-PATH without it, so a bare `make` outside the shell fails as *missing tools*,
-not as a real failure.
+equivalent and preferred. Neither `luacheck`, `stylua` nor
+`lua-language-server` is on the PATH without it, so a bare `make` outside the
+shell fails as *missing tools*, not as a real failure.
