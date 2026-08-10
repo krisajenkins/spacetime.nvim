@@ -187,8 +187,9 @@ end
 T["every unimplemented command notifies once, and none of them raise"] = function()
 	-- The browser commands (`:Spacetime`, `:SpacetimeToggle`,
 	-- `:SpacetimeDatabases`) are excluded because they really do something — see
-	-- tests/test_tree_ui.lua — as is `:SpacetimeRows`, which opens the browser on
-	-- a table (tests/test_rows_ui.lua). `:SpacetimeStatus` has a file of its own.
+	-- tests/test_tree_ui.lua — as are `:SpacetimeRows` and `:SpacetimeSchema`,
+	-- which open the browser on a table (tests/test_rows_ui.lua and
+	-- tests/test_schema_ui.lua). `:SpacetimeStatus` has a file of its own.
 	child.lua(
 		[[
 		for _, command in ipairs(...) do
@@ -200,13 +201,12 @@ T["every unimplemented command notifies once, and none of them raise"] = functio
 				"SpacetimeConnect",
 				"SpacetimeConnect testnet",
 				"SpacetimeTables spacegym",
-				"SpacetimeSchema spacegym.member",
 				"SpacetimeLogsStop",
 			},
 		}
 	)
 
-	expect.equality(#child.lua_get("NOTIFIED"), 5)
+	expect.equality(#child.lua_get("NOTIFIED"), 4)
 end
 
 T[":SpacetimeLogs parses its bang"] = function()

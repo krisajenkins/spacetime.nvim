@@ -131,6 +131,37 @@ function M.set_lines(bufnr, lines, first, last)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Who is painting the content buffer
+--------------------------------------------------------------------------------
+
+-- The content buffer is shared: the row grid, the schema view and (later) the
+-- log view all paint into it, and only one of them is on screen at a time. A
+-- name rather than a handle, for the same reason the layout is found by buffer
+-- name: it survives the buffer being wiped and recreated.
+local content_owner = nil ---@type string|nil
+
+---Claim the content buffer for `owner`.
+---
+---What a view calls before it paints. The point is the *other* view: a request
+---that was already on the wire when the user switched views calls its own
+---`render()` when it lands, and |spacetime.ui.buffer.owns_content()| is how that
+---render knows it would be painting over somebody else's buffer.
+---
+---Keymaps are not touched here — each view applies its own through
+---`spacetime.ui.keys`, which unbinds the previous view's as it goes.
+---@param owner string A short, stable name: `"rows"`, `"schema"`.
+function M.claim_content(owner)
+	content_owner = owner
+end
+
+---Is `owner` the last view to have claimed the content buffer?
+---@param owner string
+---@return boolean
+function M.owns_content(owner)
+	return content_owner == owner
+end
+
 ---The window in the current tabpage showing `bufnr`, if any.
 ---
 ---Public because it is also how a caller asks "is the layout open?" — the same

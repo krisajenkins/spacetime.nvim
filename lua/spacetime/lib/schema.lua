@@ -315,6 +315,40 @@ function M.table_by_name(model, name)
 	return nil
 end
 
+---Find a table **or a view** by either spelling of its name.
+---
+---Views are queryable exactly as tables are, so everything the user can name —
+---`:SpacetimeRows`, `:SpacetimeSchema`, completion — has to look in both lists.
+---Tables win a name collision, which is the SQL layer's own precedence.
+---
+---Tolerant of a half-built model: a `model` that is not a table, or one whose
+---`tables`/`views` are missing, simply finds nothing. That matters because the
+---one caller that reads a *cached* model cannot be sure what is under the key.
+---@param model SpacetimeSchema|table|nil
+---@param name any
+---@return SpacetimeSchemaTable|SpacetimeSchemaView|nil
+function M.entry_by_name(model, name)
+	if type(model) ~= "table" or type(name) ~= "string" then
+		return nil
+	end
+
+	---@param group any
+	---@return any
+	local function find(group)
+		for _, entry in ipairs(list(group)) do
+			if type(entry) == "table" and (entry.canonical == name or entry.name == name) then
+				return entry
+			end
+		end
+		return nil
+	end
+
+	-- Two calls rather than a loop over `{model.tables, model.views}`: `ipairs`
+	-- stops at the first `nil`, so a model with no `tables` key would silently
+	-- never look at its views (tests/CLAUDE.md).
+	return find(model.tables) or find(model.views)
+end
+
 ---Whether a failed schema request should be retried at the next version down.
 ---
 ---Mirrors the CLI's own negotiation (`crates/cli/src/api.rs`): a server that

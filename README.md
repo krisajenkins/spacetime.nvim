@@ -5,11 +5,11 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > **Status: early.** The browsing interface is under construction. The full
 > command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
-> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime` and
-> `:SpacetimeRows`): the layout, a sidebar listing your databases and the tables
-> and views inside them, and `<CR>` on a table to see its rows — sorted, paged,
-> yanked or floated in full. The schema view and the log view are the next
-> pieces.
+> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`,
+> `:SpacetimeRows` and `:SpacetimeSchema`): the layout, a sidebar listing your
+> databases and the tables and views inside them, `<CR>` on a table to see its
+> rows — sorted, paged, yanked or floated in full — and the schema of a table
+> alongside the module's reducers. The log view is the next piece.
 
 ## Requirements
 
@@ -66,7 +66,7 @@ require("spacetime").setup({
 | `:SpacetimeDatabases`      | Open the browser and refetch the database list   |
 | `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
 | `:SpacetimeRows {tbl}`     | Open the browser on the rows of `[db.]tbl`       |
-| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl` — *placeholder*    |
+| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`, and the reducers  |
 | `:SpacetimeLogs[!] [db]`   | Show logs; `!` follows them — *placeholder*      |
 | `:SpacetimeLogsStop`       | Stop following logs — *placeholder*              |
 | `:SpacetimeStatus`         | Print the resolved connection                    |
@@ -169,7 +169,10 @@ clipboard.
 
 #### Content-window keymaps
 
-These are buffer-local to the content window — the grid.
+These are buffer-local to the content window *while it is showing a grid*. The
+content window is shared — the schema view paints into the same buffer — so
+these keys go away when another view takes it over, and come back with the next
+table you open.
 
 | Key   | Does                                                    |
 | ----- | ------------------------------------------------------- |
@@ -191,6 +194,52 @@ nothing. Either spelling of the table works, source (`ledgerEntry`) or SQL
 
 Everything under `:Spacetime` above then applies: the same grid, the same
 keymaps, the same cache.
+
+### `:SpacetimeSchema`
+
+`:SpacetimeSchema spacegym.ledgerEntry` describes one table in the content
+window: its columns with their resolved types, then its indexes, its
+constraints, and the whole module's reducers. The database may be left off and
+either spelling of the table works, exactly as for `:SpacetimeRows`. Views are
+described too — a view has neither indexes nor constraints, and says so.
+
+```
+ledgerEntry (ledger_entry)
+table · Private · 5 columns · schema v10
+
+Columns
+  entry_id        U64                 PK autoinc
+  transaction_id  { __uuid__: U128 }
+  security_id     String
+  amount          I64
+  account         Array<String>
+
+Indexes
+  ledgerEntry_entryId_idx_btree  BTree(entry_id)  accessor entryId
+
+Constraints
+  ledger_entry_entry_id_key  Unique(entry_id)
+
+Reducers (spacegym)
+  ClientCallable  book(instanceId: U64) -> ok {} / err String
+  Private         onConnect (on_connect)() -> ok {} / err String
+```
+
+Where a name was written one way in the module and is spelled another way in
+SQL, both are shown — `ledgerEntry (ledger_entry)`, `onConnect (on_connect)`.
+The SQL endpoint accepts either, so neither spelling is a trap.
+
+A reducer is marked `ClientCallable` or `Private` as the server reports it, and
+a `Private` one is greyed out rather than hidden: it is part of the module, it
+is simply not yours to call. Servers older than SpacetimeDB 2.0.4 answer with a
+schema that has no visibility field at all, and there the marker is **omitted
+entirely** rather than guessed at — an unknown visibility means "assume
+callable", because labelling every reducer `Private` would be a claim about
+your module rather than a report of what the server said.
+
+Nothing in this view is truncated, and it binds no keys of its own. The schema
+is the same one the sidebar caches, so describing a table in a database you have
+already expanded costs no request; `r` in the sidebar drops it.
 
 ### `:SpacetimeStatus`
 

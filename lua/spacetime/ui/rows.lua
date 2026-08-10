@@ -76,6 +76,12 @@ local M = {}
 ---one number to point at.
 M.PAGE_SIZE = 100
 
+---The name this view claims the content buffer under.
+---
+---The buffer is shared with `ui/schema.lua`, so "am I still the one on screen?"
+---is a question every paint has to be able to answer.
+M.OWNER = "rows"
+
 local LOADING = "loading…"
 local NO_ROWS = "(no rows)"
 local NO_COLUMNS = "(no columns)"
@@ -290,8 +296,10 @@ end
 
 ---Paint the current view into the content buffer.
 ---
----A no-op when there is nothing to show or the content buffer does not exist:
----the view is still there, and the next `open()` renders it.
+---A no-op when there is nothing to show, when the content buffer does not exist,
+---or when another view has claimed it since — a rows response that lands after
+---`:SpacetimeSchema` has taken the buffer must not paint over the schema. The
+---view is still there either way, and the next `open()` renders it.
 function M.render()
 	local current = view
 	if current == nil then
@@ -299,6 +307,9 @@ function M.render()
 	end
 
 	local buffer = require("spacetime.ui.buffer")
+	if not buffer.owns_content(M.OWNER) then
+		return
+	end
 	local bufnr = buffer.find(buffer.CONTENT_NAME)
 	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
 		return
@@ -656,14 +667,9 @@ end
 -- Keymaps
 --------------------------------------------------------------------------------
 
----@class SpacetimeRowsKeymap
----@field keys string[]
----@field desc string
----@field action fun()
-
 ---Every key the content window binds while it is showing a grid. One table, as
 ---in `ui/sidebar.lua`, so the mappings and the documentation cannot drift apart.
----@type SpacetimeRowsKeymap[]
+---@type SpacetimeKeymap[]
 M.KEYMAPS = {
 	{
 		keys = { "s" },
@@ -711,19 +717,12 @@ M.KEYMAPS = {
 
 ---Bind every content-window key, buffer-locally.
 ---
----Re-applied on every render: `vim.keymap.set` overwrites, so this is idempotent.
+---Re-applied on every render, and idempotent. `ui/keys` unbinds whatever it last
+---put in the buffer first, which is what takes the *schema* view's key map off
+---the shared content buffer when a grid takes it back.
 ---@param bufnr integer The content buffer.
 function M.apply_keymaps(bufnr)
-	for _, map in ipairs(M.KEYMAPS) do
-		for _, lhs in ipairs(map.keys) do
-			vim.keymap.set("n", lhs, map.action, {
-				buffer = bufnr,
-				nowait = true,
-				silent = true,
-				desc = "spacetime: " .. map.desc,
-			})
-		end
-	end
+	require("spacetime.ui.keys").apply(bufnr, M.KEYMAPS)
 end
 
 --------------------------------------------------------------------------------
@@ -872,6 +871,10 @@ function M.open(request)
 		order = {},
 		rank = {},
 	}
+
+	-- Take the content buffer back from whatever was showing in it: every
+	-- `M.render` below this checks the claim, and so does the schema view's.
+	require("spacetime.ui.buffer").claim_content(M.OWNER)
 
 	local cached = state.cache_get(key)
 	if type(cached) == "table" then

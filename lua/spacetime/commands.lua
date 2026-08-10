@@ -255,33 +255,28 @@ local function cached_entry(database, table_name)
 	if type(schema) ~= "table" then
 		return nil, nil
 	end
-
-	---@param group any
-	---@return any
-	local function find(group)
-		for _, entry in ipairs(type(group) == "table" and group or {}) do
-			if type(entry) == "table" and (entry.canonical == table_name or entry.name == table_name) then
-				return entry
-			end
-		end
-		return nil
-	end
-
-	-- Written as two calls rather than a loop over `{schema.tables, schema.views}`:
-	-- `ipairs` stops at the first `nil`, so a schema with no `tables` key would
-	-- silently never look at its views (tests/CLAUDE.md).
-	return find(schema.tables) or find(schema.views), schema
+	-- Both spellings, tables before views: `lib/schema` owns that rule, and the
+	-- schema view resolves the same name the same way.
+	return require("spacetime.lib.schema").entry_by_name(schema, table_name), schema
 end
 
----Open the browser on `[db.]table`. What `:SpacetimeRows` does.
+---Split a `[db.]table` argument and resolve the connection it belongs to.
 ---
 ---The argument splits on its first dot: `spacegym.member` names both halves,
 ---`member` alone means the database the project config resolved to. Which is
----why the connection is resolved from the *current* buffer, before
----`sidebar.open()` displaces it — the same ordering, for the same reason, as
----point 1 of `ui/sidebar.lua`'s header.
+---why the connection is resolved from the *current* buffer, before the layout
+---displaces it — the same ordering, for the same reason, as point 1 of
+---`ui/sidebar.lua`'s header.
+---
+---Every failure is reported here and answers `nil`, so a caller has one thing to
+---check and the two commands that take a table cannot word the same complaint
+---two different ways.
 ---@param arg string The command's one argument.
-local function open_rows(arg)
+---@param command string The command as the user typed it, for the messages.
+---@return SpacetimeConnection|nil connection
+---@return string|nil database
+---@return string|nil table_name
+local function table_target(arg, command)
 	local logger = require("spacetime.logger")
 
 	local database, table_name = arg:match("^([^.]+)%.(.+)$")
@@ -289,19 +284,30 @@ local function open_rows(arg)
 		table_name = arg
 	end
 	if type(table_name) ~= "string" or table_name == "" then
-		logger.warn(":SpacetimeRows needs a table name, as [database.]table")
-		return
+		logger.warn(command .. " needs a table name, as [database.]table")
+		return nil, nil, nil
 	end
 
 	local connection, err = require("spacetime.config").current(vim.api.nvim_get_current_buf())
 	if not connection then
 		logger.error(err or "no connection could be resolved")
-		return
+		return nil, nil, nil
 	end
 
 	database = database or connection.database
 	if type(database) ~= "string" or database == "" then
 		logger.warn(("no database is configured here: write it as db.%s"):format(table_name))
+		return nil, nil, nil
+	end
+
+	return connection, database, table_name
+end
+
+---Open the browser on `[db.]table`'s rows. What `:SpacetimeRows` does.
+---@param arg string The command's one argument.
+local function open_rows(arg)
+	local connection, database, table_name = table_target(arg, ":SpacetimeRows")
+	if not connection or not database or not table_name then
 		return
 	end
 
@@ -319,6 +325,29 @@ local function open_rows(arg)
 		label = entry and entry.name or table_name,
 		entry = entry,
 		schema = schema,
+	})
+end
+
+---Show `[db.]table`'s schema. What `:SpacetimeSchema` does.
+---
+---No cache lookup here, unlike `open_rows`: the schema view needs the whole
+---model rather than one entry, and it fetches the model itself when the session
+---has not already got it. Either spelling of the table is handed straight
+---through — the view resolves it against the schema it ends up with.
+---@param arg string The command's one argument.
+local function open_schema(arg)
+	local connection, database, table_name = table_target(arg, ":SpacetimeSchema")
+	if not connection or not database or not table_name then
+		return
+	end
+
+	-- The layout first: `ui/schema.lua` paints into the content buffer, and there
+	-- is no content buffer until the browser is open.
+	require("spacetime.ui.sidebar").open()
+	require("spacetime.ui.schema").open({
+		connection = connection,
+		database = database,
+		table_name = table_name,
 	})
 end
 
@@ -394,8 +423,8 @@ M.COMMANDS = {
 		desc = "Show the schema of [db.]table",
 		nargs = 1,
 		complete = M.complete_table,
-		run = function()
-			todo(":SpacetimeSchema", 30)
+		run = function(cmd)
+			open_schema(cmd.args)
 		end,
 	},
 	{

@@ -134,6 +134,14 @@ local function sync_databases()
 			elseif result ~= nil and result.error then
 				db.status = "error"
 				db.error = result.error
+			else
+				-- Nothing in flight and nothing recorded: whatever the node last said
+				-- is over. Said explicitly, because the state is *derived* — a node
+				-- left reading `loading…` after its request was taken over by
+				-- `ui/schema.lua` (one key, one request) would be showing a request
+				-- that no longer exists.
+				db.status = "idle"
+				db.error = nil
 			end
 		end
 	end
@@ -633,16 +641,9 @@ function M.yank_identity()
 	yank(node and node.db and node.db.identity, "identity")
 end
 
----One sidebar mapping. `keys` is a list because `<CR>` and `o` are the same
----action, and because |:help| renders them as one line.
----@class SpacetimeSidebarKeymap
----@field keys string[]
----@field desc string
----@field action fun()
-
 ---Every key the sidebar binds, and the help text `?` prints. One table, so the
 ---mappings and the help cannot drift apart.
----@type SpacetimeSidebarKeymap[]
+---@type SpacetimeKeymap[]
 M.KEYMAPS = {
 	{
 		keys = { "<CR>", "o" },
@@ -702,20 +703,12 @@ end
 
 ---Bind every sidebar key, buffer-locally.
 ---
----Re-applied on every `open()`: `vim.keymap.set` overwrites, so this is
----idempotent, and a buffer that somehow lost its mappings gets them back.
+---Re-applied on every `open()` and idempotent, so a buffer that somehow lost its
+---mappings gets them back. The sidebar buffer is its own — nothing else paints
+---into it — so the unbinding `ui/keys` does first is a no-op here.
 ---@param bufnr integer The sidebar buffer.
 function M.apply_keymaps(bufnr)
-	for _, map in ipairs(M.KEYMAPS) do
-		for _, lhs in ipairs(map.keys) do
-			vim.keymap.set("n", lhs, map.action, {
-				buffer = bufnr,
-				nowait = true,
-				silent = true,
-				desc = "spacetime: " .. map.desc,
-			})
-		end
-	end
+	require("spacetime.ui.keys").apply(bufnr, M.KEYMAPS)
 end
 
 return M

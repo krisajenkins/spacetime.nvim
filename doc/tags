@@ -30,6 +30,9 @@ spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
 spacetime-opt-side	spacetime.txt	/*spacetime-opt-side*
 spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*
+spacetime-schema-names	spacetime.txt	/*spacetime-schema-names*
+spacetime-schema-private	spacetime.txt	/*spacetime-schema-private*
+spacetime-schema-view	spacetime.txt	/*spacetime-schema-view*
 spacetime-sidebar	spacetime.txt	/*spacetime-sidebar*
 spacetime-sidebar-errors	spacetime.txt	/*spacetime-sidebar-errors*
 spacetime-sidebar-expanding	spacetime.txt	/*spacetime-sidebar-expanding*
