@@ -33,6 +33,22 @@ local function one_column(column, value)
 	)
 end
 
+---A page of `n` single-column rows, each tagged so one page is telling from
+---another. Paging tests need a *full* page, because `]p` stops at a page the
+---server returned short.
+---@param n integer
+---@param tag string
+---@return string
+local function page_of(n, tag)
+	local rows = {}
+	for i = 1, n do
+		rows[i] = ('["%s %d"]'):format(tag, i)
+	end
+	return ('[{"schema":{"elements":[{"name":{"some":"id"},"algebraic_type":{"String":[]}}]},"rows":[%s],"total_duration_micros":42}]'):format(
+		table.concat(rows, ",")
+	)
+end
+
 local T = new_set({
 	pre_case = function(c)
 		c.lua(
@@ -154,22 +170,25 @@ T["<CR> on a table renders its rows, aligned by display width"] = function()
 	child.type_keys("<CR>")
 
 	local lines = content_lines()
-	-- A header and the fixture's two rows.
-	expect.equality(#lines, 3)
-	expect.equality(lines[1]:find("security_id", 1, true), 1)
+	-- The badge, a header, and the fixture's two rows.
+	expect.equality(#lines, 4)
+	expect.equality(lines[1], "2 rows · 167µs")
+	expect.equality(lines[2]:find("security_id", 1, true), 1)
 	-- The Option column renders through `lib/value`, quoted because it is nested.
-	expect.equality(lines[2]:find('some("£")', 1, true) ~= nil, true)
-	expect.equality(lines[3]:find('some("🎟")', 1, true) ~= nil, true)
+	expect.equality(lines[3]:find('some("£")', 1, true) ~= nil, true)
+	expect.equality(lines[4]:find('some("🎟")', 1, true) ~= nil, true)
 
 	-- The real property: the `code` column starts at the same *display* column on
-	-- every line. `£` is 1 column in 2 bytes and `🎟` is 2 columns in 4, so a
-	-- byte-based layout would put these three starts two columns apart.
+	-- every line of the grid. `£` is 1 column in 2 bytes and `🎟` is 2 columns in
+	-- 4, so a byte-based layout would put these three starts two columns apart.
 	local starts = child.lua_get([[
 		(function()
 			local out = {}
-			for i, line in ipairs(vim.api.nvim_buf_get_lines(B.find('spacetime://content'), 0, -1, false)) do
+			local all = vim.api.nvim_buf_get_lines(B.find('spacetime://content'), 0, -1, false)
+			for i = 2, #all do
+				local line = all[i]
 				local at = assert(line:find('code', 1, true) or line:find('some(', 1, true))
-				out[i] = vim.fn.strdisplaywidth(line:sub(1, at - 1))
+				out[i - 1] = vim.fn.strdisplaywidth(line:sub(1, at - 1))
 			end
 			return out
 		end)()
@@ -190,7 +209,7 @@ T["a table with no rows says so rather than showing a bare header"] = function()
 
 	child.type_keys("<CR>")
 
-	expect.equality(content_lines(), { "id", "(no rows)" })
+	expect.equality(content_lines(), { "0 rows · 0s", "id", "(no rows)" })
 end
 
 T["a big integer keeps the exact spelling lib/json gave it"] = function()
@@ -200,16 +219,16 @@ T["a big integer keeps the exact spelling lib/json gave it"] = function()
 	child.type_keys("<CR>")
 
 	local lines = content_lines()
-	expect.equality(#lines, 2)
+	expect.equality(#lines, 3)
 	-- The U256 arrives as hex and stays hex — the column's 40-column budget cuts
 	-- it, so what is on screen is a prefix and an ellipsis, not a rounded value.
-	expect.equality(lines[2]:find("0xc2005efe02e92547ddd4bd", 1, true), 1)
-	expect.equality(lines[2]:find("…", 1, true) ~= nil, true)
+	expect.equality(lines[3]:find("0xc2005efe02e92547ddd4bd", 1, true), 1)
+	expect.equality(lines[3]:find("…", 1, true) ~= nil, true)
 	-- The U128 arrives as a bare number and `lib/json.lua` hands it back as 39
 	-- exact digits, which fit. `vim.json.decode` would have made that
 	-- `1.1858454210193e+38`, and the yank register would have been a lie.
-	expect.equality(lines[2]:find("118584542101933595460429904643539362103", 1, true) ~= nil, true)
-	expect.equality(lines[2]:find("e+", 1, true), nil)
+	expect.equality(lines[3]:find("118584542101933595460429904643539362103", 1, true) ~= nil, true)
+	expect.equality(lines[3]:find("e+", 1, true), nil)
 end
 
 --------------------------------------------------------------------------------
@@ -236,7 +255,7 @@ T["the whole grid is written in one nvim_buf_set_lines call"] = function()
 	child.lua([[ PENDING[1]() ]])
 
 	expect.equality(child.lua_get([[WRITES]]), 1)
-	expect.equality(#content_lines(), 3)
+	expect.equality(#content_lines(), 4)
 end
 
 T["extmarks count features, not cells"] = function()
@@ -245,14 +264,14 @@ T["extmarks count features, not cells"] = function()
 
 	child.type_keys("<CR>")
 
-	-- Four columns over two rows is eight cells. What gets a mark is four headers
-	-- plus the one ellipsis where the long description was truncated — and
-	-- nothing else, because an unclassified, untruncated cell needs no mark.
+	-- Four columns over two rows is eight cells. What gets a mark is the badge and
+	-- four headers, plus the one ellipsis where the long description was truncated
+	-- — and nothing else, because an unclassified, untruncated cell needs no mark.
 	local counted = {}
 	for _, mark in ipairs(content_marks()) do
 		counted[mark[3]] = (counted[mark[3]] or 0) + 1
 	end
-	expect.equality(counted, { SpacetimeHeader = 4, SpacetimeTruncated = 1 })
+	expect.equality(counted, { SpacetimeHeader = 5, SpacetimeTruncated = 1 })
 end
 
 T["a NULL cell is marked, and so is a primary-key header"] = function()
@@ -264,9 +283,10 @@ T["a NULL cell is marked, and so is a primary-key header"] = function()
 	child.type_keys("<CR>")
 
 	expect.equality(child.lua_get([[QUERIES[1] ]]):find('FROM "security"', 1, true) ~= nil, true)
-	-- `security_id` is the table's primary key, and the header says so.
+	-- `security_id` is the table's primary key, and the header says so. The badge
+	-- takes line 0, so the header is line 1.
 	local marks = content_marks()
-	expect.equality({ marks[1][1], marks[1][2], marks[1][3] }, { 0, 0, "SpacetimePrimaryKey" })
+	expect.equality({ marks[2][1], marks[2][2], marks[2][3] }, { 1, 0, "SpacetimePrimaryKey" })
 
 	-- And a `none` in the Option column is a NULL, marked as one.
 	serve_sql(
@@ -283,8 +303,12 @@ T["a NULL cell is marked, and so is a primary-key header"] = function()
 	child.lua([[ STATE.cache_invalidate(STATE.key('rows', 'spacegym', 'security')) ]])
 	child.type_keys("<CR>")
 
-	expect.equality(content_lines(), { "code", "none" })
-	expect.equality(content_marks(), { { 0, 0, "SpacetimeHeader" }, { 1, 0, "SpacetimeNull" } })
+	expect.equality(content_lines(), { "1 row · 0s", "code", "none" })
+	expect.equality(content_marks(), {
+		{ 0, 0, "SpacetimeHeader" },
+		{ 1, 0, "SpacetimeHeader" },
+		{ 2, 0, "SpacetimeNull" },
+	})
 end
 
 --------------------------------------------------------------------------------
@@ -306,11 +330,12 @@ local function focus_content()
 end
 
 ---The trailing word of every data line: the `label` column, in display order.
+---Lines 1 and 2 are the badge and the header.
 ---@return string[]
 local function labels()
 	local out = {}
 	for i, line in ipairs(content_lines()) do
-		if i > 1 then
+		if i > 2 then
 			out[#out + 1] = line:match("%a+$")
 		end
 	end
@@ -330,14 +355,14 @@ T["s sorts by the raw value of the column under the cursor, and the cursor follo
 	expect.equality(labels(), { "nine", "ten", "one" })
 
 	focus_content()
-	-- On the `10` row, in the numeric column.
-	child.lua([[ vim.api.nvim_win_set_cursor(0, { 3, 0 }) ]])
+	-- On the `10` row, in the numeric column: badge, header, then the three rows.
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 4, 0 }) ]])
 	child.type_keys("s")
 
 	-- 9 before 10: sorting the display strings would have put `10` first.
 	expect.equality(labels(), { "one", "nine", "ten" })
-	-- And the cursor is on the row it was on — now the last one — not on line 3.
-	expect.equality(cursor(), { 4, 0 })
+	-- And the cursor is on the row it was on — now the last one — not on line 4.
+	expect.equality(cursor(), { 5, 0 })
 	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
 
 	-- The rows themselves were never touched: only the mapping was rebuilt.
@@ -350,19 +375,19 @@ T["s again reverses the same column"] = function()
 	child.type_keys("<CR>")
 	focus_content()
 
-	child.lua([[ vim.api.nvim_win_set_cursor(0, { 3, 0 }) ]]) -- the `10` row
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 4, 0 }) ]]) -- the `10` row
 	child.type_keys("s")
-	expect.equality(cursor(), { 4, 0 })
+	expect.equality(cursor(), { 5, 0 })
 
 	child.type_keys("s")
 	expect.equality(labels(), { "ten", "nine", "one" })
-	expect.equality(cursor(), { 2, 0 })
+	expect.equality(cursor(), { 3, 0 })
 
 	-- A different column starts ascending again rather than inheriting the
 	-- direction the last column was left in.
 	child.lua([[
-		local line = vim.api.nvim_buf_get_lines(0, 1, 2, false)[1]
-		vim.api.nvim_win_set_cursor(0, { 2, assert(line:find('ten', 1, true)) - 1 })
+		local line = vim.api.nvim_buf_get_lines(0, 2, 3, false)[1]
+		vim.api.nvim_win_set_cursor(0, { 3, assert(line:find('ten', 1, true)) - 1 })
 	]])
 	child.type_keys("s")
 	expect.equality(labels(), { "nine", "one", "ten" })
@@ -378,8 +403,8 @@ T["the cursor keeps its column when its row moves"] = function()
 	-- column starts at a *different byte offset* on the two rows — which is the
 	-- case a byte-preserving cursor restore would get wrong.
 	child.lua([[
-		local line = vim.api.nvim_buf_get_lines(0, 2, 3, false)[1]
-		vim.api.nvim_win_set_cursor(0, { 3, assert(line:find('some(', 1, true)) - 1 })
+		local line = vim.api.nvim_buf_get_lines(0, 3, 4, false)[1]
+		vim.api.nvim_win_set_cursor(0, { 4, assert(line:find('some(', 1, true)) - 1 })
 	]])
 	---The display column a byte offset sits at on `line` — the units the grid
 	---aligns in, and the only ones in which "the same column" means anything.
@@ -401,13 +426,13 @@ T["the cursor keeps its column when its row moves"] = function()
 	expect.equality(cursor(), before)
 
 	child.type_keys("s") -- descending: the 🎟 row goes first
-	expect.equality(content_lines()[2]:find("🎟", 1, true) ~= nil, true)
+	expect.equality(content_lines()[3]:find("🎟", 1, true) ~= nil, true)
 	local after = cursor()
-	expect.equality(after[1], 2)
+	expect.equality(after[1], 3)
 	-- Still on the first byte of that cell, at the offset *this* line puts it at.
 	expect.equality(
 		after[2],
-		child.lua_get([[vim.api.nvim_buf_get_lines(0, 1, 2, false)[1]:find('some(', 1, true) - 1]])
+		child.lua_get([[vim.api.nvim_buf_get_lines(0, 2, 3, false)[1]:find('some(', 1, true) - 1]])
 	)
 	-- And the same grid column, said in the units the grid aligns in.
 	expect.equality(display_column(after[1], after[2]), before_column)
@@ -419,10 +444,10 @@ T["s on the header sorts without moving the cursor, and does nothing at all with
 	child.type_keys("<CR>")
 	focus_content()
 
-	child.lua([[ vim.api.nvim_win_set_cursor(0, { 1, 0 }) ]])
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 2, 0 }) ]])
 	child.type_keys("s")
 	expect.equality(labels(), { "one", "nine", "ten" })
-	expect.equality(cursor(), { 1, 0 })
+	expect.equality(cursor(), { 2, 0 })
 
 	-- An error is buffer text, not a grid: `s` must be a no-op on it rather than
 	-- a raise under the cursor.
@@ -435,6 +460,243 @@ T["s on the header sorts without moving the cursor, and does nothing at all with
 	child.lua([[ expect.no_error(function() vim.cmd('normal s') end) ]])
 	expect.equality(content_lines(), { "error: SqlError: Unknown table: alpha" })
 	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+--------------------------------------------------------------------------------
+-- The badge
+--------------------------------------------------------------------------------
+
+T["the badge counts the rows and reports what the server said the query cost"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+
+	child.type_keys("<CR>")
+
+	-- Two rows, and the fixture's own `total_duration_micros` of 167, rendered by
+	-- the same code a TimeDuration cell goes through.
+	expect.equality(content_lines()[1], "2 rows · 167µs")
+end
+
+--------------------------------------------------------------------------------
+-- Paging
+--------------------------------------------------------------------------------
+
+-- The stub matches a query by any fragment in `SQL`, so a paging case clears the
+-- table between pages: `"alpha"` appears in every page's SQL and would otherwise
+-- race the `OFFSET` fragments for the match.
+
+T["]p asks for the next page over OFFSET, and [p comes back"] = function()
+	serve_sql('"alpha"', 200, page_of(100, "one"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ SQL = {} ]])
+	serve_sql("OFFSET 100", 200, page_of(100, "two"))
+	child.type_keys("]p")
+
+	expect.equality(child.lua_get([[QUERIES[2] ]]), 'SELECT * FROM "alpha" LIMIT 100 OFFSET 100')
+	expect.equality(content_lines()[1], "100 rows · offset 100 · 42µs")
+	expect.equality(content_lines()[3], "two 1")
+
+	child.lua([[ SQL = {} ]])
+	serve_sql('"alpha"', 200, page_of(100, "one"))
+	child.type_keys("[p")
+
+	-- Back to page one, and `lib/sql` leaves `OFFSET 0` out rather than writing it.
+	expect.equality(child.lua_get([[QUERIES[3] ]]), 'SELECT * FROM "alpha" LIMIT 100')
+	expect.equality(content_lines()[1], "100 rows · 42µs")
+	expect.equality(content_lines()[3], "one 1")
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["[p on the first page issues nothing, rather than a negative offset"] = function()
+	serve_sql('"alpha"', 200, page_of(100, "one"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.type_keys("[p")
+
+	expect.equality(#child.lua_get([[QUERIES]]), 1)
+	expect.equality(content_lines()[1], "100 rows · 42µs")
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["]p stops at a page the server returned short"] = function()
+	serve_sql('"alpha"', 200, page_of(3, "only"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.type_keys("]p")
+
+	-- Three rows for a page of 100 is the end of the table: there is nothing to
+	-- ask for, so nothing is asked.
+	expect.equality(#child.lua_get([[QUERIES]]), 1)
+	expect.equality(content_lines()[1], "3 rows · 42µs")
+end
+
+-- The sequence guard, driven through paging rather than through two tables: one
+-- key, so `state.start` is what supersedes — which is exactly why the key has no
+-- offset in it.
+T["a held-down ]p leaves only the last page on screen"] = function()
+	serve_sql('"alpha"', 200, page_of(100, "one"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ SQL = {}; HOLD_SQL = true ]])
+	serve_sql("OFFSET 100", 200, page_of(100, "two"))
+	serve_sql("OFFSET 200", 200, page_of(100, "three"))
+
+	child.type_keys("]p")
+	child.type_keys("]p")
+
+	expect.equality(child.lua_get([[#PENDING]]), 2)
+	-- The second `]p` registered under the same key, so it killed the first.
+	expect.equality(child.lua_get([[KILLED]]), 1)
+
+	-- Page three answers first; page two's late response must be dropped.
+	child.lua([[ PENDING[2]() ]])
+	child.lua([[ PENDING[1]() ]])
+
+	expect.equality(content_lines()[1], "100 rows · offset 200 · 42µs")
+	expect.equality(content_lines()[3], "three 1")
+
+	-- And the cache still holds page *one*: the cache key is the request key, so
+	-- caching a later page under it would hand those rows to the next `<CR>`.
+	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('rows', 'spacegym', 'alpha')).rows[1][1] ]]), "one 1")
+end
+
+--------------------------------------------------------------------------------
+-- Yanking and the row detail
+--------------------------------------------------------------------------------
+
+---Put the cursor on the fixture's second data row, at the `description` column.
+---That description is 47 display columns, so the grid cut it to 40 with a `…`.
+local function on_long_description()
+	child.lua([[
+		local line = vim.api.nvim_buf_get_lines(0, 3, 4, false)[1]
+		vim.api.nvim_win_set_cursor(0, { 4, assert(line:find('Gym class', 1, true)) - 1 })
+	]])
+end
+
+T["y yanks the cell's whole value, not the grid's truncation of it"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+	on_long_description()
+
+	child.type_keys("y")
+
+	local yanked = child.lua_get([[vim.fn.getreg('"')]])
+	expect.equality(yanked, "Gym class pass — 1 unit redeems 1 class booking")
+	-- The whole point: what is on screen is *not* what went in the register.
+	local shown = child.lua_get([[vim.api.nvim_buf_get_lines(0, 3, 4, false)[1] ]])
+	expect.equality(shown:find(yanked, 1, true), nil)
+	expect.equality(shown:find("…", 1, true) ~= nil, true)
+end
+
+T["y on the header or the badge yanks nothing and says so"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ vim.fn.setreg('"', 'untouched') ]])
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 1, 0 }) ]])
+	child.type_keys("y")
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 2, 0 }) ]])
+	child.type_keys("y")
+
+	expect.equality(child.lua_get([[vim.fn.getreg('"')]]), "untouched")
+	expect.equality(#child.lua_get([[NOTIFIED]]), 2)
+end
+
+T["Y yanks the row as JSON, built from the values rather than the display text"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 3, 0 }) ]])
+	child.type_keys("Y")
+
+	-- Parsed back rather than string-compared: the assertion is that it is JSON,
+	-- not that the encoder picked a particular key order.
+	expect.equality(child.lua_get([[vim.json.decode(vim.fn.getreg('"'))]]), {
+		security_id = "GBP",
+		description = "British Pound Sterling",
+		-- The Option arrives as `[variant, payload]` and is yanked as it arrived,
+		-- not as the `some("£")` the grid shows.
+		code = { 0, "£" },
+		scale = 2,
+	})
+end
+
+T["K floats the whole row, every column untruncated"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+	on_long_description()
+
+	child.type_keys("K")
+
+	local shown = child.lua_get([[
+		(function()
+			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+				if vim.api.nvim_win_get_config(winid).relative ~= '' then
+					return vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(winid), 0, -1, false)
+				end
+			end
+			return {}
+		end)()
+	]])
+
+	-- One line per column of the row, name then value.
+	expect.equality(#shown, 4)
+	expect.equality(shown[1]:find("security_id", 1, true), 1)
+	expect.equality(shown[1]:find("PASS", 1, true) ~= nil, true)
+	expect.equality(shown[2]:find("Gym class pass — 1 unit redeems 1 class booking", 1, true) ~= nil, true)
+	expect.equality(shown[2]:find("…", 1, true), nil)
+
+	-- A float is a window too: close it rather than quitting, which would take the
+	-- child with it.
+	child.type_keys("q")
+	expect.equality(
+		child.lua_get([[
+			#vim.tbl_filter(function(winid)
+				return vim.api.nvim_win_get_config(winid).relative ~= ''
+			end, vim.api.nvim_tabpage_list_wins(0))
+		]]),
+		0
+	)
+end
+
+--------------------------------------------------------------------------------
+-- :SpacetimeRows
+--------------------------------------------------------------------------------
+
+T[":SpacetimeRows opens the browser on the table it names"] = function()
+	serve_sql('"alpha"', 200, one_column("alpha_id", "from alpha"))
+
+	child.lua([[ vim.cmd('SpacetimeRows spacegym.alpha') ]])
+
+	expect.equality(content_lines(), { "1 row · 1µs", "alpha_id", "from alpha" })
+	expect.equality(child.lua_get([[QUERIES]]), { 'SELECT * FROM "alpha" LIMIT 100' })
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T[":SpacetimeRows on a bare name with no project database says which to write"] = function()
+	child.lua([[ vim.cmd('SpacetimeRows alpha') ]])
+
+	expect.equality(#child.lua_get([[QUERIES]]), 0)
+	local notified = child.lua_get([[NOTIFIED]])
+	expect.equality(#notified, 1)
+	expect.equality(notified[1]:find("db.alpha", 1, true) ~= nil, true)
 end
 
 --------------------------------------------------------------------------------
@@ -500,7 +762,7 @@ T["switching tables quickly leaves the second table's rows on screen"] = functio
 	child.lua([[ PENDING[2]() ]])
 	child.lua([[ PENDING[1]() ]])
 
-	expect.equality(content_lines(), { "beta_id", "from beta" })
+	expect.equality(content_lines(), { "1 row · 1µs", "beta_id", "from beta" })
 	-- Dropped entirely: not painted, and not cached either.
 	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('rows', 'spacegym', 'alpha')) == nil]]), true)
 	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('rows', 'spacegym', 'beta')) ~= nil]]), true)
@@ -515,7 +777,7 @@ T["reopening a table serves it from the session cache"] = function()
 	child.type_keys("j", "<CR>") -- beta: no stub, so it 404s
 	child.type_keys("k", "<CR>") -- back to alpha
 
-	expect.equality(content_lines(), { "alpha_id", "from alpha" })
+	expect.equality(content_lines(), { "1 row · 1µs", "alpha_id", "from alpha" })
 	-- Two statements for three openings: alpha's second render came from the cache.
 	expect.equality(#child.lua_get([[QUERIES]]), 2)
 end

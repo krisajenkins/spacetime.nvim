@@ -21,9 +21,10 @@ The plugin is still early: the browsing interface is under construction. The
 full command set is defined and completes its arguments, but several commands
 are placeholders that say so when you run them — see |spacetime-commands|.
 What works today is connection resolution (|:SpacetimeStatus|) and the browser
-itself (|:Spacetime|): the window layout, a sidebar listing your databases and
-the tables and views inside them, `<CR>` on a table to see its rows, and `s`
-to sort them by a column. Paging and the schema view are the next pieces.
+itself (|:Spacetime| and |:SpacetimeRows|): the window layout, a sidebar
+listing your databases and the tables and views inside them, and `<CR>` on a
+table to see its rows — sorted, paged, yanked or floated in full. The schema
+view and the log view are the next pieces.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -126,7 +127,7 @@ The plugin defines ten commands: >
     :SpacetimeConnect [nick]    switch server by nickname  (placeholder)
     :SpacetimeDatabases         refetch your database list
     :SpacetimeTables [db]       list a database's tables   (placeholder)
-    :SpacetimeRows {tbl}        browse rows of [db.]tbl    (placeholder)
+    :SpacetimeRows {tbl}        browse rows of [db.]tbl
     :SpacetimeSchema {tbl}      schema of [db.]tbl         (placeholder)
     :SpacetimeLogs[!] [db]      show logs; ! follows them  (placeholder)
     :SpacetimeLogsStop          stop following logs        (placeholder)
@@ -197,12 +198,29 @@ tokens in that file are never touched by completion.
     The sidebar *is* the database list, so this is |:Spacetime| with the
     cached answer thrown away first.
 
+                                                               *:SpacetimeRows*
+:SpacetimeRows {[database.]table}
+
+    Open the browser and put that table's rows in the content window, without
+    going through the sidebar to find it. Everything under |:Spacetime| then
+    applies — the same grid, the same keymaps, the same session cache.
+
+    The database may be left off: |:SpacetimeRows| `member` means the database
+    your project's `spacetime.json` names. With no database on either, the
+    command says so and does nothing.
+
+    Either spelling of the table is accepted, the source name (`ledgerEntry`)
+    or the SQL one (`ledger_entry`), as completion offers both.
+
+    No schema request is made for this. If the database has been expanded in
+    the sidebar this session its cached schema supplies the primary-key markers
+    and the types a `Ref` resolves through; if it has not, the grid renders
+    without them rather than putting a second request on the wire.
+
                                                             *:SpacetimeConnect*
 :SpacetimeConnect [{nickname}]
                                                              *:SpacetimeTables*
 :SpacetimeTables [{database}]
-                                                               *:SpacetimeRows*
-:SpacetimeRows {[database.]table}
                                                              *:SpacetimeSchema*
 :SpacetimeSchema {[database.]table}
                                                                *:SpacetimeLogs*
@@ -298,9 +316,20 @@ OPENING A TABLE                                       *spacetime-sidebar-rows*
 
     SELECT * FROM "table" LIMIT 100
 <
-and renders the answer in the content window as a grid: a header line, then one
-line per row. Columns are aligned by display width rather than by byte count,
-so `£` (one column, two bytes) and `🎟` (two columns, four bytes) still line up.
+and renders the answer in the content window as a grid: a badge line, a header
+line, then one line per row. Columns are aligned by display width rather than
+by byte count, so `£` (one column, two bytes) and `🎟` (two columns, four bytes)
+still line up.
+
+                                                      *spacetime-grid-badge*
+The badge on the first line says how many rows are on screen, how far into the
+table they start, and how long the server said the query took: >
+
+    100 rows · offset 100 · 1.4ms
+<
+The duration is the response's own `total_duration_micros`, rendered by the
+same code a TimeDuration column goes through. A server that sends none reads
+`0s`, which is what we were told.
 
 Primary-key headers, `NULL` cells, identities, connection ids, timestamps and
 durations each get their own highlight group. Every group the plugin defines is
@@ -309,12 +338,14 @@ SpacetimeNull Comment` is all it takes to change one.
 
 A cell wider than 40 columns is cut and marked with a `…`. Nothing is rounded
 or reformatted on the way: a 39-digit identifier is shown to its last digit,
-because a browser that quietly loses precision is worse than no browser.
+because a browser that quietly loses precision is worse than no browser. The
+cut is the grid's, not the data's — `y` and `K` below both give you the whole
+value, so nothing on screen is the only copy of anything.
 
-Only the first 100 rows are fetched. Paging past them comes with a later
-release. Rows are cached per table for the session, so re-opening a table you
-have already looked at puts nothing on the wire; `r` on the sidebar drops that
-database's rows along with its schema.
+Rows are cached per table for the session, so re-opening a table you have
+already looked at puts nothing on the wire; `r` on the sidebar drops that
+database's rows along with its schema. Only the first page is cached: the cache
+key is the request key, and it carries no offset.
 
 Opening a second table cancels the first table's request, and a response that
 arrives after you have moved on is discarded rather than painted over the table
@@ -344,12 +375,62 @@ rather than the line it was on, and it stays in the column it was in.
 
 Re-opening a table shows it in the order the server sent it again.
 
+PAGING                                                *spacetime-grid-paging*
+
+`]p` and `[p` turn the page, 100 rows at a time. There is no server-side
+cursor, so a page is a `LIMIT`/`OFFSET` window: turning one moves the offset
+and asks again. >
+
+    SELECT * FROM "table" LIMIT 100 OFFSET 100
+<
+Both keys stop rather than beep. `[p` on the first page does nothing, because
+the page before it would be a negative offset, and `]p` does nothing on a page
+the server returned short, because a page after the last one cannot exist.
+
+Holding `]p` down is safe. Every page of a table is requested under the same
+key, so each keystroke cancels the request before it, and a response that lands
+after you have paged past it is discarded rather than painted over the page you
+are looking at.
+
+A page arrives in the order the server sent it, so `s` sorts the page you are
+looking at rather than the table. Only the first page is cached; the others are
+fetched each time.
+
+YANKING AND THE ROW DETAIL                              *spacetime-grid-yank*
+
+The grid truncates for the sake of the layout, so three keys exist to give you
+what it cut:
+
+    `y`   yanks the cell under the cursor — the whole value, before the grid
+        cut it. A String column yanks the string itself, unquoted; a 39-digit
+        integer yanks to its last digit.
+    `Y`   yanks the whole row as a JSON object, keyed by column name and valued
+        by what the server sent rather than by the display text. An integer
+        too big for a double is written as a JSON string rather than a number,
+        because that is how its digits were preserved.
+    `K`   opens a float showing every column of the row, one per line, each
+        value untruncated. 'wrap' is on, so a long one is all there. `q` or
+        `<Esc>` closes it.
+
+`y` and `Y` put their text in the unnamed register `"`, honouring a register
+prefix — `"+Y` puts the row on the system clipboard — and your 'clipboard'
+setting exactly as any other yank would. Each reports what it yanked, and how
+many bytes, in |:messages|.
+
 KEYMAPS                                              *spacetime-grid-keymaps*
 
 These are buffer-local to the content window while it is showing a grid. >
 
     s           sort by the column under the cursor (again to reverse)
+    ]p          next page
+    [p          previous page
+    y           yank the cell under the cursor, untruncated
+    Y           yank the row as JSON
+    K           show the whole row, every column untruncated
 <
+`y`, `Y` and `K` do nothing but say so when the cursor is on the badge, on the
+header or on the `(no rows)` marker: there is no row there to act on.
+
 KEYMAPS                                            *spacetime-sidebar-keymaps*
 
 All of these are buffer-local to the sidebar; nothing is mapped globally. >

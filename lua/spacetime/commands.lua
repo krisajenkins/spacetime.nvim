@@ -236,6 +236,92 @@ local function todo(name, task)
 	require("spacetime.logger").warn(("%s is not implemented yet (roadmap task %d)"):format(name, task))
 end
 
+---The schema entry `table_name` names in `database`, from the cache only.
+---
+---Never fetches. A database the user has expanded this session has its schema in
+---hand, and it supplies the primary keys and the types a `Ref` resolves through;
+---one they have not means the grid renders without those rather than this
+---command putting a second request on the wire behind the rows query.
+---
+---Both spellings match, as completion offers both: `ledgerEntry` and
+---`ledger_entry` are the same table.
+---@param database string
+---@param table_name string
+---@return SpacetimeSchemaTable|SpacetimeSchemaView|nil entry
+---@return SpacetimeSchema|nil schema
+local function cached_entry(database, table_name)
+	local state = require("spacetime.state")
+	local schema = state.cache_get(state.key("schema", database))
+	if type(schema) ~= "table" then
+		return nil, nil
+	end
+
+	---@param group any
+	---@return any
+	local function find(group)
+		for _, entry in ipairs(type(group) == "table" and group or {}) do
+			if type(entry) == "table" and (entry.canonical == table_name or entry.name == table_name) then
+				return entry
+			end
+		end
+		return nil
+	end
+
+	-- Written as two calls rather than a loop over `{schema.tables, schema.views}`:
+	-- `ipairs` stops at the first `nil`, so a schema with no `tables` key would
+	-- silently never look at its views (tests/CLAUDE.md).
+	return find(schema.tables) or find(schema.views), schema
+end
+
+---Open the browser on `[db.]table`. What `:SpacetimeRows` does.
+---
+---The argument splits on its first dot: `spacegym.member` names both halves,
+---`member` alone means the database the project config resolved to. Which is
+---why the connection is resolved from the *current* buffer, before
+---`sidebar.open()` displaces it — the same ordering, for the same reason, as
+---point 1 of `ui/sidebar.lua`'s header.
+---@param arg string The command's one argument.
+local function open_rows(arg)
+	local logger = require("spacetime.logger")
+
+	local database, table_name = arg:match("^([^.]+)%.(.+)$")
+	if not database then
+		table_name = arg
+	end
+	if type(table_name) ~= "string" or table_name == "" then
+		logger.warn(":SpacetimeRows needs a table name, as [database.]table")
+		return
+	end
+
+	local connection, err = require("spacetime.config").current(vim.api.nvim_get_current_buf())
+	if not connection then
+		logger.error(err or "no connection could be resolved")
+		return
+	end
+
+	database = database or connection.database
+	if type(database) ~= "string" or database == "" then
+		logger.warn(("no database is configured here: write it as db.%s"):format(table_name))
+		return
+	end
+
+	local entry, schema = cached_entry(database, table_name)
+
+	-- The layout first: `ui/rows.lua` paints into the content buffer, and there
+	-- is no content buffer until the browser is open.
+	require("spacetime.ui.sidebar").open()
+	require("spacetime.ui.rows").open({
+		connection = connection,
+		database = database,
+		-- The canonical name is what SQL takes; the source spelling is what the
+		-- user typed and what the messages should say.
+		table_name = entry and entry.canonical or table_name,
+		label = entry and entry.name or table_name,
+		entry = entry,
+		schema = schema,
+	})
+end
+
 ---One user command, as `M.register` needs it.
 ---@class SpacetimeCommandSpec
 ---@field name string Command name, without the colon.
@@ -299,8 +385,8 @@ M.COMMANDS = {
 		desc = "Browse the rows of [db.]table",
 		nargs = 1,
 		complete = M.complete_table,
-		run = function()
-			todo(":SpacetimeRows", 27)
+		run = function(cmd)
+			open_rows(cmd.args)
 		end,
 	},
 	{

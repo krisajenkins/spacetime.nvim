@@ -1032,6 +1032,21 @@ function M.label(atype, types, opts)
 	return out
 end
 
+---A count of microseconds as human text: `500µs`, `1.5ms`, `1m 30s`.
+---
+---The same renderer a `TimeDuration` column goes through, exported because the
+---row grid's badge shows a query's `total_duration_micros` and there must be
+---exactly one place that decides what a duration reads as.
+---@param micros any A number, or the decimal string `lib/json.lua` hands back.
+---@return string|nil # `nil` when `micros` is not a count of microseconds.
+function M.duration(micros)
+	local n = to_micros(micros)
+	if n == nil then
+		return nil
+	end
+	return duration_text(n)
+end
+
 ---A raw SATS value plus its type, as display text and an optional highlight
 ---group.
 ---

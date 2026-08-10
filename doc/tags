@@ -18,7 +18,10 @@ spacetime-completion	spacetime.txt	/*spacetime-completion*
 spacetime-completion-cache	spacetime.txt	/*spacetime-completion-cache*
 spacetime-configuration	spacetime.txt	/*spacetime-configuration*
 spacetime-contents	spacetime.txt	/*spacetime-contents*
+spacetime-grid-badge	spacetime.txt	/*spacetime-grid-badge*
 spacetime-grid-keymaps	spacetime.txt	/*spacetime-grid-keymaps*
+spacetime-grid-paging	spacetime.txt	/*spacetime-grid-paging*
+spacetime-grid-yank	spacetime.txt	/*spacetime-grid-yank*
 spacetime-health	spacetime.txt	/*spacetime-health*
 spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*

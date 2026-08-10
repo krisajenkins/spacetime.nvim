@@ -5,10 +5,11 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > **Status: early.** The browsing interface is under construction. The full
 > command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
-> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`): the
-> layout, a sidebar listing your databases and the tables and views inside them,
-> and `<CR>` on a table to see its rows, sorted by whichever column you press
-> `s` on. Paging and the schema view are the next pieces.
+> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime` and
+> `:SpacetimeRows`): the layout, a sidebar listing your databases and the tables
+> and views inside them, and `<CR>` on a table to see its rows — sorted, paged,
+> yanked or floated in full. The schema view and the log view are the next
+> pieces.
 
 ## Requirements
 
@@ -64,7 +65,7 @@ require("spacetime").setup({
 | `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
 | `:SpacetimeDatabases`      | Open the browser and refetch the database list   |
 | `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
-| `:SpacetimeRows {tbl}`     | Browse rows of `[db.]tbl` — *placeholder*        |
+| `:SpacetimeRows {tbl}`     | Open the browser on the rows of `[db.]tbl`       |
 | `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl` — *placeholder*    |
 | `:SpacetimeLogs[!] [db]`   | Show logs; `!` follows them — *placeholder*      |
 | `:SpacetimeLogsStop`       | Stop following logs — *placeholder*              |
@@ -110,12 +111,13 @@ drops it and fetches again. A database that is paused answers nothing, so it is
 marked `⏸` and asked exactly once — press `r` on it once it has woken up.
 
 `<CR>` on a table or a view runs `SELECT * FROM "table" LIMIT 100` and renders
-the answer in the content window as a grid: a header row, then one line per row,
-columns aligned by display width so `£` and `🎟` still line up. Primary-key
-headers, `NULL`s, identities, timestamps and truncated cells are highlighted.
-Cells wider than 40 columns are cut with a `…`; paging past the first 100 rows
-comes with a later release. The rows are cached per table for the session, and
-`r` in the sidebar drops that database's rows along with its schema.
+the answer in the content window as a grid: a badge line, a header row, then one
+line per row, columns aligned by display width so `£` and `🎟` still line up.
+Primary-key headers, `NULL`s, identities, timestamps and truncated cells are
+highlighted. The badge says how many rows are on screen, how far into the table
+they start, and how long the server said the query took (`100 rows · offset 100
+· 1.4ms`). The rows are cached per table for the session, and `r` in the sidebar
+drops that database's rows along with its schema.
 
 `s` in the grid sorts by the column the cursor is in, and pressing it again
 reverses that column. The sort is on the values the server sent, not on the text
@@ -123,6 +125,22 @@ they are rendered as — `9` sorts before `10`, and a timestamp column sorts by
 the instant rather than by the string — and `NULL`s go last whichever way round
 the column is. Nothing is refetched and no row is rewritten; only the order the
 rows are painted in changes, and the cursor stays on the row it was on.
+
+`]p` and `[p` turn the page, 100 rows at a time, by moving the SQL `OFFSET` and
+asking again. `[p` on the first page does nothing rather than asking for a
+negative offset, and `]p` stops at a page the server returned short, because
+there is nothing after it. Holding `]p` down is safe: every page of a table is
+requested under the same key, so the pages you skipped past are cancelled and
+only the one you land on is painted. A page arrives in the order the server sent
+it, so a sort applies to the page you are looking at.
+
+Cells wider than 40 columns are cut with a `…`, but that is only the grid: `K`
+opens a float showing every column of the row under the cursor in full, `y`
+yanks the whole value of the cell under the cursor — never the truncated text —
+and `Y` yanks the whole row as JSON, built from the values the server sent
+rather than from their rendering. Both yanks go to the unnamed register `"`,
+honouring a register prefix (`"+y`) and your `clipboard` setting exactly as any
+other yank would.
 
 Switching tables quickly is safe: opening a second table cancels the first
 table's request, and a response that arrives after you have moved on is dropped
@@ -156,6 +174,23 @@ These are buffer-local to the content window — the grid.
 | Key   | Does                                                    |
 | ----- | ------------------------------------------------------- |
 | `s`   | Sort by the column under the cursor; again to reverse it |
+| `]p`  | Next page (100 rows, over the SQL `OFFSET`)              |
+| `[p`  | Previous page; nothing on the first one                  |
+| `y`   | Yank the cell under the cursor, untruncated              |
+| `Y`   | Yank the whole row as JSON                               |
+| `K`   | Float the whole row, every column untruncated            |
+
+### `:SpacetimeRows`
+
+`:SpacetimeRows spacegym.member` opens the browser and puts that table's rows in
+the content window, without going through the sidebar to find it. The database
+may be left off — `:SpacetimeRows member` — in which case it is the one your
+project's `spacetime.json` names; with neither, the command says so and does
+nothing. Either spelling of the table works, source (`ledgerEntry`) or SQL
+(`ledger_entry`).
+
+Everything under `:Spacetime` above then applies: the same grid, the same
+keymaps, the same cache.
 
 ### `:SpacetimeStatus`
 

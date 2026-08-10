@@ -35,23 +35,45 @@
 --    so re-opening a table is a table lookup, and `r` on the sidebar drops it
 --    through `state.cache_invalidate_db` along with the schema it belongs to.
 -- 5. **The whole view is one table, rebuilt on open and repainted from.** Sort
---    and paging (task 29) change `view` and call `M.render()`; neither needs to
---    know anything about buffers. `view.limit` and `view.offset` are already what
+--    and paging change `view` and call `M.render()`; neither needs to know
+--    anything about buffers. `view.limit` and `view.offset` are already what
 --    `lib/sql.select_all` is given, so paging is an offset change and a refetch
 --    rather than a new code path. Sorting is smaller still: `view.order` says
 --    which data row is painted on which line, so a sort rebuilds *that* — the
 --    rows themselves are never touched, and `view.rank`, its inverse, is what
 --    puts the cursor back on the row it was on rather than the line it was on.
+--
+-- Three things paging, yanking and the detail float then add to that:
+--
+-- 6. **A page is a `LIMIT`/`OFFSET` window, fetched under the *same* key.**
+--    `]p`/`[p` move `view.offset` and refetch, and because the key is
+--    `rows:<db>.<table>` — no offset in it — `state.start` supersedes the page
+--    the user has already paged past. Holding `]p` down therefore leaves exactly
+--    one live request, and every response it overtook is dropped by
+--    `state.finish` rather than painted. The corollary is that only page one is
+--    *cached*: the cache key is the same key, so caching page seven under it
+--    would hand page seven's rows to the next plain `<CR>` on the table.
+-- 7. **The grid truncates; the yank and the float do not.** `ui/grid.lua` cuts a
+--    cell to 40 columns for the layout's sake, but that is a rendering, not the
+--    data. `y` yanks what `lib/value.format` produced *before* the cut — the
+--    exact digits of a 39-digit integer, the whole of a long string — `Y` yanks
+--    the row as JSON built from the raw decoded values, and `K` floats every
+--    column of the row untruncated. Truncation is therefore never lossy from the
+--    user's point of view, which is what makes a 40-column budget acceptable.
+-- 8. **The badge is line one, so every line index shifts with it.** It reports
+--    the row count, the offset and the query's `total_duration_micros`. The
+--    shift is applied once, in `build`, to the spans and to
+--    `layout.first_data_line` — which every cursor mapping here is expressed
+--    in — so nothing downstream has to know the badge exists.
 
 local M = {}
 
 ---How many rows one `<CR>` asks for.
 ---
 ---There is no server-side cursor, so a page is a `LIMIT`/`OFFSET` window and
----this is its size. Task 29 puts `]p`/`[p` on `view.offset`; until then the
----first page is the whole story, and a table with more rows than this shows its
----first `PAGE_SIZE`. Exported rather than inlined so that task, and a user
----reading `:help`, both have one number to point at.
+---this is its size — the step `]p` and `[p` move `view.offset` by. Exported
+---rather than inlined so the code, the tests and a user reading `:help` all have
+---one number to point at.
 M.PAGE_SIZE = 100
 
 local LOADING = "loading…"
@@ -80,10 +102,10 @@ local UNKNOWN_ERROR = "unknown error"
 ---@field descending boolean
 
 ---The request plus everything the render needs. |spacetime.ui.rows.sort()| and
----task 29 mutate this and call `M.render()`.
+---|spacetime.ui.rows.page()| mutate this and call `M.render()`.
 ---@class SpacetimeRowsView : SpacetimeRowsRequest
 ---@field limit integer Rows asked for, i.e. `M.PAGE_SIZE`.
----@field offset integer Rows skipped. Always 0 until task 29.
+---@field offset integer Rows skipped: `M.PAGE_SIZE` per page turned.
 ---@field status "loading"|"ready"|"error"
 ---@field error? string Set when `status == "error"`.
 ---@field result? SpacetimeSqlResult Set when `status == "ready"`.
@@ -157,6 +179,27 @@ local function error_lines(message)
 	return lines, spans
 end
 
+---The badge: how many rows are on screen, where in the table they start, and how
+---long the server said the query took.
+---
+---The duration goes through `lib/value.duration`, which is the same renderer a
+---`TimeDuration` column uses, so `167µs` here and `167µs` in a cell mean the
+---same thing. A server that sent no `total_duration_micros` has it parsed as `0`
+---and reads `0s`, which is honest: it is what we were told.
+---@param current SpacetimeRowsView
+---@param count integer Rows in the result.
+---@return string
+local function badge_text(current, count)
+	local pieces = { ("%d row%s"):format(count, count == 1 and "" or "s") }
+	if current.offset > 0 then
+		pieces[#pieces + 1] = ("offset %d"):format(current.offset)
+	end
+	local result = current.result
+	local micros = (type(result) == "table" and result.duration_micros) or 0
+	pieces[#pieces + 1] = require("spacetime.lib.value").duration(micros) or "?"
+	return table.concat(pieces, " · ")
+end
+
 ---Every line of the view, and every span to mark on it.
 ---
 ---May raise — on a ragged row, which `ui/grid.layout` treats as fatal because it
@@ -224,7 +267,21 @@ local function build(current)
 		-- The header alone reads as a rendering failure; say so instead.
 		lines[#lines + 1] = NO_ROWS
 	end
-	return lines, layout.spans, layout
+
+	-- Point 8 of the module header. The badge takes line one, so everything the
+	-- grid reported in line numbers moves down by one — spans, and
+	-- `first_data_line`, which is what every cursor mapping in this file is
+	-- written in. Done here, once, rather than by each of `sort`, `y`, `Y` and `K`.
+	local badge = badge_text(current, #result.rows)
+	table.insert(lines, 1, badge)
+	local spans = layout.spans
+	for _, span in ipairs(spans) do
+		span.line = span.line + 1
+	end
+	spans[#spans + 1] = { line = 0, start_col = 0, end_col = #badge, hl_group = "SpacetimeHeader" }
+	layout.first_data_line = layout.first_data_line + 1
+
+	return lines, spans, layout
 end
 
 --------------------------------------------------------------------------------
@@ -277,7 +334,7 @@ function M.render()
 end
 
 --------------------------------------------------------------------------------
--- Sorting
+-- The cursor
 --------------------------------------------------------------------------------
 
 ---The window showing the content buffer, and the buffer itself.
@@ -291,6 +348,56 @@ local function content_window()
 	end
 	return buffer.window_showing(bufnr), bufnr
 end
+
+---What the cursor in the content window is sitting on.
+---@class SpacetimeRowsCursor
+---@field view SpacetimeRowsView The view the row belongs to.
+---@field result SpacetimeSqlResult The result it was rendered from.
+---@field row any[] The raw row, exactly as `lib/sql.parse` decoded it.
+---@field index integer Index into `result.rows` — the *data* row, not the line.
+---@field column integer 1-based index into `result.columns`.
+
+---The data row and grid column under the cursor, or `nil` when there is none.
+---
+---`nil` is every case in which a key bound to this must be a no-op: no view, one
+---still loading or in error, a result with no columns, a content window nobody
+---is showing, and a cursor on the badge, on the header or on the `(no rows)`
+---marker. `order` is what turns a line into a data index, so this answers with
+---the row the user is *looking at* whatever the grid is currently sorted by.
+---@return SpacetimeRowsCursor|nil
+local function cell_under_cursor()
+	local current = view
+	if current == nil or current.status ~= "ready" then
+		return nil
+	end
+	local layout, result = current.layout, current.result
+	if layout == nil or type(result) ~= "table" or #result.columns == 0 then
+		return nil
+	end
+
+	local winid, bufnr = content_window()
+	if winid == nil or bufnr == nil then
+		return nil
+	end
+
+	local cursor = vim.api.nvim_win_get_cursor(winid)
+	-- `first_data_line` already counts the badge, so this is buffer lines
+	-- throughout. A line above the grid indexes `order` at zero or below and a
+	-- line past it indexes past the end; both are `nil`, which is the answer.
+	local index = current.order[cursor[1] - layout.first_data_line + 1]
+	local row = index ~= nil and result.rows[index] or nil
+	if index == nil or type(row) ~= "table" then
+		return nil
+	end
+
+	local line = vim.api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
+	local column = require("spacetime.ui.grid").column_at(line, cursor[2], layout.widths)
+	return { view = current, result = result, row = row, index = index, column = column }
+end
+
+--------------------------------------------------------------------------------
+-- Sorting
+--------------------------------------------------------------------------------
 
 ---Sort the grid by the column under the cursor; press again to reverse it.
 ---
@@ -360,6 +467,192 @@ function M.sort()
 end
 
 --------------------------------------------------------------------------------
+-- Yanking
+--------------------------------------------------------------------------------
+
+---Put `text` in the register the user asked for.
+---
+---`vim.v.register` is the register the keystroke selected: `"` normally, the one
+---a `"x` prefix named, and `+` or `*` when 'clipboard' is `unnamedplus` or
+---`unnamed` — which is how a yank here honours that option without reading it.
+---
+---The confirmation reports a *size* rather than the text, unlike the sidebar's:
+---a cell can be a whole JSON document, and the message area is not the place to
+---print one.
+---@param text any Anything but a non-empty string is nothing to yank.
+---@param what string What is being yanked, for the confirmation message.
+local function yank(text, what)
+	local logger = require("spacetime.logger")
+	if type(text) ~= "string" or text == "" then
+		logger.warn("there is nothing to yank here")
+		return
+	end
+
+	local register = vim.v.register
+	if type(register) ~= "string" or register == "" then
+		register = '"'
+	end
+	vim.fn.setreg(register, text)
+	logger.info(("yanked %s (%d bytes) to register %s"):format(what, #text, register))
+end
+
+---The whole value of one cell, as `lib/value` renders it before the grid cuts it.
+---@param at SpacetimeRowsCursor
+---@param column integer 1-based index into `result.columns`.
+---@return string text
+---@return string|nil hl
+local function cell_text(at, column)
+	local schema_column = at.result.columns[column]
+	return require("spacetime.lib.value").format(
+		at.row[column],
+		type(schema_column) == "table" and schema_column.algebraic_type or nil,
+		at.view.schema
+	)
+end
+
+---Yank the cell under the cursor — the value, not the grid's rendering of it.
+---
+---What `y` in the content window does. The text is what `lib/value.format`
+---produced *before* `ui/grid.lua` cut it to fit the column, so a truncated cell
+---still yanks in full and a 39-digit integer yanks to its last digit. A String
+---column yanks the string itself, unquoted, byte for byte.
+function M.yank_cell()
+	local at = cell_under_cursor()
+	if at == nil then
+		require("spacetime.logger").warn("there is no cell under the cursor")
+		return
+	end
+	yank((cell_text(at, at.column)), "cell")
+end
+
+---Yank the whole row under the cursor as a JSON object.
+---
+---What `Y` in the content window does. Keyed by column name, valued by the
+---**raw** decoded values rather than by their display text, so it round-trips
+---through any JSON parser. Two consequences worth knowing: a `null` stays
+---`null`, and an integer too big for a double is a JSON *string*, because that
+---is how `lib/json.lua` preserved its digits and rounding them into a number
+---here would undo the whole point of it.
+function M.yank_row()
+	local at = cell_under_cursor()
+	if at == nil then
+		require("spacetime.logger").warn("there is no row under the cursor")
+		return
+	end
+
+	local object = {}
+	for c, column in ipairs(at.result.columns) do
+		local raw = at.row[c]
+		-- `vim.NIL` is what a JSON `null` decoded to, and what it encodes back to.
+		object[column.name] = raw == nil and vim.NIL or raw
+	end
+
+	local ok, encoded = pcall(vim.json.encode, object)
+	if not ok or type(encoded) ~= "string" then
+		require("spacetime.logger").warn("this row cannot be encoded as JSON")
+		return
+	end
+	yank(encoded, "row")
+end
+
+--------------------------------------------------------------------------------
+-- The row-detail float
+--------------------------------------------------------------------------------
+
+-- At most one is open at a time; opening a second closes the first. Tracked
+-- rather than looked up, because the float has no buffer name to find it by.
+local detail_win = nil ---@type integer|nil
+
+---Close the row-detail float, if one is open.
+---
+---`pcall`: a window the user has already closed by other means is not an error,
+---and a stale handle must not raise out of a keymap.
+local function close_detail()
+	if detail_win ~= nil and vim.api.nvim_win_is_valid(detail_win) then
+		pcall(vim.api.nvim_win_close, detail_win, true)
+	end
+	detail_win = nil
+end
+
+---Show every column of the row under the cursor, untruncated, in a float.
+---
+---What `K` in the content window does, and the reason a 40-column grid is not
+---lossy: this is where the whole value lives. Values are still folded onto one
+---line each — a newline in a String would otherwise break the column-per-line
+---correspondence — but nothing is cut, and 'wrap' is on so a long one is all
+---there.
+---
+---Focus moves into the float; `q` or `<Esc>` closes it.
+function M.detail()
+	local at = cell_under_cursor()
+	if at == nil then
+		require("spacetime.logger").warn("there is no row under the cursor")
+		return
+	end
+
+	local buffer = require("spacetime.ui.buffer")
+	local grid = require("spacetime.ui.grid")
+
+	local names, name_width = {}, 0
+	for c, column in ipairs(at.result.columns) do
+		names[c] = grid.sanitise(column.name)
+		name_width = math.max(name_width, grid.display_width(names[c]))
+	end
+
+	local lines, spans, width = {}, {}, 0
+	for c = 1, #at.result.columns do
+		local text, hl = cell_text(at, c)
+		text = grid.sanitise(text)
+		local gap = string.rep(" ", name_width - grid.display_width(names[c]) + 2)
+		lines[c] = names[c] .. gap .. text
+		width = math.max(width, grid.display_width(lines[c]))
+
+		local start_col = #names[c] + #gap
+		spans[#spans + 1] = { line = c - 1, start_col = 0, end_col = #names[c], hl_group = "SpacetimeHeader" }
+		if hl then
+			spans[#spans + 1] = { line = c - 1, start_col = start_col, end_col = #lines[c], hl_group = hl }
+		end
+	end
+
+	local bufnr = vim.api.nvim_create_buf(false, true)
+	vim.bo[bufnr].bufhidden = "wipe"
+	vim.bo[bufnr].filetype = buffer.CONTENT_FILETYPE
+	buffer.set_lines(bufnr, lines)
+	vim.bo[bufnr].modifiable = false
+	for _, span in ipairs(spans) do
+		vim.api.nvim_buf_set_extmark(bufnr, buffer.namespace(), span.line, span.start_col, {
+			end_col = span.end_col,
+			hl_group = span.hl_group,
+		})
+	end
+
+	close_detail()
+	local winid = vim.api.nvim_open_win(bufnr, true, {
+		relative = "cursor",
+		row = 1,
+		col = 0,
+		width = math.max(20, math.min(width + 1, math.max(20, vim.o.columns - 8))),
+		height = math.max(1, math.min(#lines, math.max(1, vim.o.lines - 6))),
+		style = "minimal",
+		border = "rounded",
+		title = " " .. (at.view.label or at.view.table_name) .. " ",
+	})
+	detail_win = winid
+	vim.wo[winid].wrap = true
+
+	-- Set directly rather than through a table-driven loop: two keys, both
+	-- closing the same window, are not a key map worth documenting twice.
+	for _, lhs in ipairs({ "q", "<Esc>" }) do
+		vim.keymap.set("n", lhs, close_detail, {
+			buffer = bufnr,
+			nowait = true,
+			silent = true,
+			desc = "spacetime: close the row detail",
+		})
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Keymaps
 --------------------------------------------------------------------------------
 
@@ -377,6 +670,41 @@ M.KEYMAPS = {
 		desc = "sort by the column under the cursor (again to reverse)",
 		action = function()
 			M.sort()
+		end,
+	},
+	{
+		keys = { "]p" },
+		desc = "next page",
+		action = function()
+			M.page(1)
+		end,
+	},
+	{
+		keys = { "[p" },
+		desc = "previous page",
+		action = function()
+			M.page(-1)
+		end,
+	},
+	{
+		keys = { "y" },
+		desc = "yank the cell under the cursor, untruncated",
+		action = function()
+			M.yank_cell()
+		end,
+	},
+	{
+		keys = { "Y" },
+		desc = "yank the row as JSON",
+		action = function()
+			M.yank_row()
+		end,
+	},
+	{
+		keys = { "K" },
+		desc = "show the whole row, every column untruncated",
+		action = function()
+			M.detail()
 		end,
 	},
 }
@@ -442,13 +770,62 @@ local function fetch(current)
 			current.status = "ready"
 			current.result = result
 			reset_order(current)
-			state.cache_set(key, result)
+			-- Only page one. The cache key *is* the request key — no offset in it,
+			-- which is what lets a held-down `]p` supersede itself — so caching a
+			-- later page under it would hand those rows to the next `<CR>` on the
+			-- table. See point 6 of the module header.
+			if current.offset == 0 then
+				state.cache_set(key, result)
+			end
 		else
 			current.status = "error"
 			current.error = "no result"
 		end
 		M.render()
 	end)
+end
+
+---Turn one page, forwards or backwards, and refetch.
+---
+---What `]p` and `[p` in the content window do. A page is a `LIMIT`/`OFFSET`
+---window of `M.PAGE_SIZE` rows, so turning one is an offset change and a
+---refetch; the request goes out under the same key as every other page of this
+---table, so holding `]p` down leaves one live request and drops the responses it
+---overtook (point 6 of the module header).
+---
+---Two no-ops, both silent, because a key that beeps at the ends of a table is
+---worse than one that stops: `[p` on page one would be a negative offset, and
+---`]p` on a page the server returned short is a page that cannot exist.
+---
+---The new page arrives in the order the server sent it: the sort is a reading of
+---the rows in hand, and those rows are about to be replaced.
+---@param direction integer Negative for the previous page, positive for the next.
+function M.page(direction)
+	local current = view
+	if current == nil or type(direction) ~= "number" or direction == 0 then
+		return
+	end
+
+	local step = direction < 0 and -current.limit or current.limit
+	local offset = current.offset + step
+	if offset < 0 then
+		return
+	end
+
+	local result = current.result
+	local short = current.status == "ready" and type(result) == "table" and #result.rows < current.limit
+	if step > 0 and short then
+		return
+	end
+
+	current.offset = offset
+	current.status = "loading"
+	current.error = nil
+	current.result = nil
+	reset_order(current)
+
+	M.render()
+	fetch(current)
 end
 
 ---Fetch and render a table's — or a view's — rows in the content window.
@@ -498,6 +875,11 @@ function M.open(request)
 
 	local cached = state.cache_get(key)
 	if type(cached) == "table" then
+		-- Nothing below this fetches, so nothing below it would supersede a page of
+		-- *this* table still on the wire — a `]p` the user pressed before going back
+		-- to the sidebar. Burn its token by hand, or it repaints page one with page
+		-- two's rows.
+		state.cancel(key)
 		view.status = "ready"
 		view.result = cached
 		-- A cached result is a *new* view of it: re-opening a table you had sorted
