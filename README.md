@@ -91,8 +91,10 @@ The sidebar then lists the databases belonging to your identity. From there:
 - `?` prints the sidebar's key map.
 
 If the enclosing repository's `spacetime.json` (or `spacetime.local.json`)
-names a `database`, that database is expanded for you — run `:Spacetime` inside
-a module repo and it lands where you meant.
+names a `database`, that database is expanded for you and the sidebar cursor
+starts on it — run `:Spacetime` inside a module repo and it lands where you
+meant. Move the cursor and it stays put: the jump happens once, when the layout
+opens, not on every refresh.
 
 Running `:Spacetime` again re-focuses the existing layout rather than splitting
 a second one, and a sidebar you have resized by hand keeps your width. The

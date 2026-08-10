@@ -132,6 +132,32 @@ local function sidebar_lines()
 	return buffer_lines("spacetime://sidebar")
 end
 
+---Which line the sidebar's cursor is on, 1-based.
+---@return integer
+local function sidebar_cursor()
+	return child.lua_get([[vim.api.nvim_win_get_cursor(B.window_showing(B.find('spacetime://sidebar')))[1] ]])
+end
+
+---Make a fresh repository, containing `contents` as `spacetime.json` when given,
+---and make it the child's working directory. The `.git` marker is what stops the
+---VCS-root walk, so a case with no project file gets a *deliberate* absence
+---rather than whatever happens to sit above the checkout.
+---@param contents? string
+local function in_project(contents)
+	child.lua(
+		[[
+			local contents = ...
+			local root = vim.fn.tempname()
+			vim.fn.mkdir(root .. '/.git', 'p')
+			if contents then
+				vim.fn.writefile({ contents }, root .. '/spacetime.json')
+			end
+			vim.fn.chdir(root)
+		]],
+		{ contents }
+	)
+end
+
 ---How many schema requests the stub has been asked for.
 ---@return integer
 local function schema_requests()
@@ -274,18 +300,52 @@ T["<CR> expands and collapses the database under the cursor"] = function()
 end
 
 T["a project config naming a database expands straight to it"] = function()
-	child.lua([[
-		local root = vim.fn.tempname()
-		vim.fn.mkdir(root .. '/.git', 'p')
-		vim.fn.writefile({ '{"database": "spacetutorial"}' }, root .. '/spacetime.json')
-		vim.fn.chdir(root)
-	]])
+	in_project('{"database": "spacetutorial"}')
 
 	child.lua([[ vim.cmd('Spacetime') ]])
 
 	-- Expanded *and* filled in: landing on the database means seeing its tables.
 	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    🔒 widget" })
 	expect.equality(schema_requests(), 1)
+	-- And the cursor is *on* it, rather than on the alphabetically first database.
+	expect.equality(sidebar_cursor(), 2)
+end
+
+T["a project config naming a database by identity lands on it too"] = function()
+	-- `bb22` is the stub's identity for `spacetutorial`: the same rule that picks
+	-- the node to expand picks the line to sit on.
+	in_project('{"database": "bb22"}')
+
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    🔒 widget" })
+	expect.equality(sidebar_cursor(), 2)
+end
+
+T["with no project database the cursor stays at the top"] = function()
+	in_project()
+
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▸ spacetutorial" })
+	expect.equality(sidebar_cursor(), 1)
+end
+
+-- The focus is one-shot. Every later paint restores the row the cursor was on, so
+-- moving off the project database has to stick — otherwise `r`, a schema landing
+-- or a second `:Spacetime` would fight the user for the cursor.
+T["the project focus happens once, and never takes the cursor back"] = function()
+	in_project('{"database": "spacetutorial"}')
+	child.lua([[ vim.cmd('Spacetime') ]])
+	expect.equality(sidebar_cursor(), 2)
+
+	child.type_keys("gg")
+	child.type_keys("r")
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    🔒 widget" })
+	expect.equality(sidebar_cursor(), 1)
+
+	child.lua([[ vim.cmd('Spacetime') ]])
+	expect.equality(sidebar_cursor(), 1)
 end
 
 --------------------------------------------------------------------------------

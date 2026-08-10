@@ -5,7 +5,7 @@
 -- database list, paints the result, and binds the keys that drive it. It lives
 -- under `ui/` and may therefore touch `vim.api`; `lib/` may not.
 --
--- Five things this file exists to get right:
+-- Seven things this file exists to get right:
 --
 -- 1. **The connection is resolved before the layout is opened.** `open_layout()`
 --    displaces the current window's buffer, and `config.current()` reads the
@@ -38,6 +38,12 @@
 --    a node that refetched on each expand would hammer it. Nothing here probes
 --    for pauses — the status is only ever learnt from a request the user asked
 --    for.
+-- 7. **The project database is focused exactly once.** A fresh layout arms a
+--    one-shot flag, and the first settled render puts the cursor on the database
+--    the project config named rather than on the alphabetically first one. It has
+--    to be one-shot: every later paint — `r`, a schema landing, a second
+--    `:Spacetime` — restores the row the cursor was already on, and yanking it
+--    back to the project database each time would fight the user for the cursor.
 --
 -- Every `require` is inside a function body, matching `commands.lua`: this
 -- module is only reached by running a command, and `spacetime.commands` requires
@@ -76,6 +82,11 @@ local connection_error = nil ---@type string|nil
 
 -- The database the project config named, if any: what to expand straight to.
 local project_database = nil ---@type string|nil
+
+-- Set when a fresh layout opens; the next settled render puts the cursor on the
+-- project database and clears it. One-shot, so `r` and every later repaint keep
+-- the cursor where the user left it. See point 7 of the module header.
+local focus_project = false ---@type boolean
 
 -- The buffer the content window displaced when the layout opened, so `q` can
 -- put it back rather than leaving a `spacetime://content` scratch behind.
@@ -159,6 +170,23 @@ local function sidebar_window()
 	return buffer.window_showing(bufnr), bufnr
 end
 
+---Is this the database the project config named?
+---
+---Matched on either spelling: the config may name a database by its display name
+---or by its hex identity, and both a `SpacetimeDatabaseEntry` and a tree node
+---carry the pair. One predicate for both callers — the expansion and the cursor
+---have to agree on which node is the project's, or `:Spacetime` would expand one
+---database and land on another.
+---@param name string|nil Display name.
+---@param identity string|nil Hex identity.
+---@return boolean
+local function is_project_database(name, identity)
+	if type(project_database) ~= "string" or project_database == "" then
+		return false
+	end
+	return name == project_database or identity == project_database
+end
+
 ---Paint the model into the sidebar buffer.
 ---
 ---A no-op when the sidebar buffer does not exist yet: the model is still there
@@ -179,9 +207,25 @@ function M.render()
 	nodes = rendered.nodes
 
 	-- Read before the write and put back after it: a refetch that keeps the same
-	-- databases must not throw the cursor back to the top of the tree.
+	-- databases must not throw the cursor back to the top of the tree. The project
+	-- database overrides the preserved row exactly once — on the first settled
+	-- render after a fresh layout opened, and never again.
 	local winid = buffer.window_showing(bufnr)
 	local row = winid and vim.api.nvim_win_get_cursor(winid)[1] or nil
+	if winid and focus_project then
+		for _, node in ipairs(nodes) do
+			if node.kind == "database" and is_project_database(node.database, node.db and node.db.identity) then
+				row = node.line
+				break
+			end
+		end
+		-- Disarmed whether or not it was found: a project file naming a database
+		-- this identity does not own must not leave the flag waiting to pounce on
+		-- some later refresh.
+		if model.status ~= "loading" then
+			focus_project = false
+		end
+	end
 
 	buffer.set_lines(bufnr, rendered.lines)
 
@@ -308,15 +352,12 @@ end
 
 ---Expand the database the project config named, if the list contains it.
 ---
----Matched on either spelling: the config may name a database by its display
----name or by its hex identity, and `SpacetimeDatabaseEntry` carries both.
+---Which entry that is comes from `is_project_database`, shared with the cursor
+---placement in `M.render()`.
 ---@param entries SpacetimeDatabaseEntry[]
 local function expand_project_database(entries)
-	if type(project_database) ~= "string" or project_database == "" then
-		return
-	end
 	for _, entry in ipairs(entries) do
-		if entry.name == project_database or entry.identity == project_database then
+		if is_project_database(entry.name, entry.identity) then
 			M.expand(entry.name)
 		end
 	end
@@ -460,6 +501,13 @@ function M.open(opts)
 	local state = require("spacetime.state")
 
 	capture_context()
+
+	-- Armed only when the layout was not already open, and read before it opens.
+	-- Two things depend on that: a second `:Spacetime` re-focuses without yanking
+	-- the cursor away from wherever the user has got to, and `:SpacetimeRows` and
+	-- friends — which call this to guarantee the layout exists — leave an open
+	-- sidebar's cursor alone while still landing sensibly on a cold start.
+	focus_project = focus_project or (not M.is_open() and type(project_database) == "string" and project_database ~= "")
 
 	local sidebar_win, content_win = buffer.open_layout()
 	M.apply_keymaps(vim.api.nvim_win_get_buf(sidebar_win))
