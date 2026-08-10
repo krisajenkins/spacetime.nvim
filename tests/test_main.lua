@@ -53,6 +53,27 @@ T["setup() rejects a non-string identity"] = function()
 	end)
 end
 
+-- The layout options are validated in spacetime.config (see tests/test_config.lua
+-- for the full set of rejections); these two prove setup() is actually wired to
+-- that validation, and that the defaults are the documented ones.
+T["setup() defaults the sidebar to the left at 30 columns"] = function()
+	local spacetime = require("spacetime")
+	spacetime.setup({})
+	expect.equality(spacetime.config.side, "left")
+	expect.equality(spacetime.config.width, 30)
+end
+
+T["setup() rejects an invalid side or width"] = function()
+	local spacetime = require("spacetime")
+	expect.error(function()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		spacetime.setup({ side = "middle" })
+	end)
+	expect.error(function()
+		spacetime.setup({ width = "twenty" })
+	end)
+end
+
 -- Unlike log_level, the identity override is stored: it is read whenever an
 -- identity is needed, not consumed once at setup time.
 T["setup() stores the identity override"] = function()

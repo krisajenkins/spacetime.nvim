@@ -65,6 +65,8 @@ unset fields keep their defaults. >lua
     require("spacetime").setup({
       log_level = vim.log.levels.INFO,
       identity = nil,
+      side = "left",
+      width = 30,
     })
 <
                                                        *spacetime-opt-log_level*
@@ -83,6 +85,31 @@ identity ~
     `iss` and `sub` claims, so it should never need setting by hand — but if
     that derivation goes wrong, a 64-character hex identity here (e.g.
     `"c200..."`) skips it entirely.
+
+                                                            *spacetime-opt-side*
+side ~
+    Type: `string`, default: `"left"`
+
+    Which side of the tabpage the sidebar opens on: `"left"` or `"right"`.
+    Anything else is rejected by |spacetime.setup()|.
+
+                                                           *spacetime-opt-width*
+width ~
+    Type: `number` or `string`, default: `30`
+
+    How wide the sidebar is, either as a number of columns (`30`) or as a
+    percentage of the screen written as a string (`"20%"`). A percentage is
+    resolved against the terminal's width each time the layout is opened, so
+    one setting suits a wide and a narrow terminal alike; the result is never
+    allowed below 10 columns, and always leaves at least one column for the
+    content window.
+
+    A width of zero or less, or a malformed percentage such as `"20"` or
+    `"120%"`, is rejected by |spacetime.setup()|.
+
+    The sidebar window is created with 'winfixwidth', so ordinary window
+    commands will not resize it behind your back — and if you resize it by
+    hand, re-opening the layout leaves your width alone.
 
 ==============================================================================
 5. COMMANDS                                               *spacetime-commands*

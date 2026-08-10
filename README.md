@@ -35,12 +35,20 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 require("spacetime").setup({
   log_level = vim.log.levels.INFO,
   identity = nil,
+  side = "left",
+  width = 30,
 })
 ```
 
 - `log_level` — minimum severity for the plugin's own `vim.notify()` messages.
 - `identity` — overrides the identity derived from your token's claims; a
   last-resort escape hatch.
+- `side` — which side of the tabpage the sidebar opens on: `"left"` (the
+  default) or `"right"`.
+- `width` — how wide the sidebar is: a number of columns (`30` by default), or a
+  percentage of the screen as a string, e.g. `"20%"`. A percentage is resolved
+  against the terminal's current width each time the layout is opened, and never
+  produces a sidebar narrower than 10 columns.
 
 ## Commands
 

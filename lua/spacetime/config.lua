@@ -30,6 +30,12 @@
 --
 -- The resolution rules are ported from the SpacetimeDB TUI's `src/config.rs`,
 -- whose tests are the specification; see ROADMAP.md, task 8.
+--
+-- The file has a second, much smaller job at the bottom: validating the two
+-- *layout* options `setup()` accepts (`side` and `width`) and turning a width
+-- into a column count. They live here, beside the connection options, so that
+-- every `setup()` option is validated in one place — and both functions are
+-- pure, so `ui/buffer.lua` gets its clamping rules tested without a window.
 
 ---Connection options as accepted from `setup()`, i.e. `require("spacetime").config`.
 ---@class SpacetimeConnectionOpts
@@ -55,6 +61,11 @@
 ---@field server? string The nickname that was asked for, if any.
 ---@field database? string
 ---@field token? string
+
+---How `:Spacetime` arranges its two windows, as accepted from `setup()`.
+---@class SpacetimeLayoutOpts
+---@field side? "left"|"right" Which side of the tabpage the sidebar takes.
+---@field width? integer|string Columns (`30`), or a percentage of the screen (`"20%"`).
 
 ---A cli.toml `[[server_configs]]` block with its address split out.
 ---@class SpacetimeResolvedServer
@@ -393,6 +404,61 @@ function M.project_config(bufnr)
 		return nil
 	end
 	return M.read_project_config(root)
+end
+
+---Below this a sidebar shows nothing useful, and it is also the guard that stops
+---a percentage of a narrow terminal rounding down to zero columns.
+M.MIN_SIDEBAR_WIDTH = 10
+
+---Is this a usable sidebar width — a positive column count, or `"N%"` with N in
+---1..100?
+---@param width any
+---@return boolean
+local function valid_width(width)
+	if type(width) == "number" then
+		return width > 0
+	end
+	if type(width) == "string" then
+		local pct = tonumber(width:match("^(%d+)%%$"))
+		return pct ~= nil and pct > 0 and pct <= 100
+	end
+	return false
+end
+
+---Validate the layout half of `setup()`'s options.
+---
+---Raises through `vim.validate`, exactly as the rest of `setup()` does, so a
+---misconfigured layout fails at `setup()` time rather than the first time
+---`:Spacetime` tries to build a window out of it. Both fields are optional.
+---@param opts SpacetimeLayoutOpts
+function M.validate_layout(opts)
+	vim.validate("side", opts.side, function(side)
+		return side == "left" or side == "right"
+	end, true, '"left" or "right"')
+	vim.validate("width", opts.width, valid_width, true, 'a positive number of columns or a percentage such as "20%"')
+end
+
+---Resolve a configured width to a concrete column count.
+---
+---Pure: the total is passed in (`vim.o.columns` at the call site) rather than
+---read, so the clamping is testable without a UI. The clamp is the point — a
+---percentage of a narrow terminal rounds towards zero, and a 0-width window is
+---one the user can neither see nor close.
+---@param width integer|string A column count, or a percentage such as `"20%"`.
+---@param total integer The columns available, i.e. `vim.o.columns`.
+---@return integer
+function M.sidebar_columns(width, total)
+	local columns
+	if type(width) == "string" then
+		local pct = tonumber(width:match("^(%d+)%%$")) or 0
+		columns = math.floor(total * pct / 100)
+	else
+		columns = math.floor(width)
+	end
+
+	-- Leave at least one column for the content window, but never drop below the
+	-- floor: on a terminal too narrow for both, Neovim's own minimums decide.
+	return math.max(math.min(columns, total - 1), M.MIN_SIDEBAR_WIDTH)
 end
 
 ---The connection for `bufnr`: `resolve()` fed from the real environment, the

@@ -307,6 +307,78 @@ T["a token from opts beats the environment, which beats cli.toml"] = function()
 end
 
 -- ---------------------------------------------------------------------------
+-- Layout options
+-- ---------------------------------------------------------------------------
+
+T["both layout options are optional"] = function()
+	expect.no_error(function()
+		config.validate_layout({})
+	end)
+end
+
+T["either side is accepted"] = function()
+	expect.no_error(function()
+		config.validate_layout({ side = "left" })
+		config.validate_layout({ side = "right" })
+	end)
+end
+
+T["an unknown side is rejected"] = function()
+	expect.error(function()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		config.validate_layout({ side = "middle" })
+	end, "side")
+end
+
+T["a column count and a percentage are both accepted widths"] = function()
+	expect.no_error(function()
+		config.validate_layout({ width = 30 })
+		config.validate_layout({ width = "20%" })
+		config.validate_layout({ width = "100%" })
+	end)
+end
+
+T["a non-positive width is rejected"] = function()
+	expect.error(function()
+		config.validate_layout({ width = 0 })
+	end, "width")
+	expect.error(function()
+		config.validate_layout({ width = -10 })
+	end, "width")
+end
+
+T["a malformed percentage is rejected"] = function()
+	-- No `%`, a percentage of nothing, one over 100, and a bare unit — each is a
+	-- plausible typo, and none of them may quietly become a column count.
+	for _, bad in ipairs({ "20", "0%", "120%", "20 %", "%", "20%%", "twenty%" }) do
+		expect.error(function()
+			config.validate_layout({ width = bad })
+		end, "width")
+	end
+end
+
+T["a width in columns is used as given"] = function()
+	expect.equality(config.sidebar_columns(30, 200), 30)
+end
+
+T["a percentage width resolves against the columns available"] = function()
+	expect.equality(config.sidebar_columns("20%", 200), 40)
+	expect.equality(config.sidebar_columns("25%", 81), 20) -- rounds down
+end
+
+T["a width is clamped to the minimum, never to zero"] = function()
+	-- A tiny terminal is the case that matters: 5% of 40 columns is 2, and a
+	-- window that narrow (or, one rounding away, 0) is unusable.
+	expect.equality(config.sidebar_columns("5%", 40), config.MIN_SIDEBAR_WIDTH)
+	expect.equality(config.sidebar_columns(1, 200), config.MIN_SIDEBAR_WIDTH)
+end
+
+T["a width wider than the screen leaves a column for the content window"] = function()
+	expect.equality(config.sidebar_columns("100%", 200), 199)
+	expect.equality(config.sidebar_columns(500, 200), 199)
+end
+
+-- ---------------------------------------------------------------------------
 -- Project discovery, against real directory trees
 -- ---------------------------------------------------------------------------
 

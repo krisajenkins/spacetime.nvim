@@ -9,12 +9,17 @@ local logger = require("spacetime.logger")
 ---@class SpacetimeSetupOptions
 ---@field log_level? number Log level, e.g. `vim.log.levels.INFO` (the default)
 ---@field identity? string Hex identity override, skipping derivation from the token's claims
+---@field side? "left"|"right" Which side `:Spacetime` opens its sidebar on (default `"left"`)
+---@field width? integer|string Sidebar width in columns, or a percentage such as `"20%"` (default `30`)
 
 local M = {}
 
 -- Default configuration. Kept separate from M.config so setup() can deep-merge
 -- user options over a pristine copy without the defaults drifting.
-local defaults = {}
+local defaults = {
+	side = "left",
+	width = 30,
+}
 
 -- Runtime configuration, seeded with defaults and overridden by setup().
 M.config = vim.deepcopy(defaults)
@@ -31,6 +36,10 @@ function M.setup(opts)
 	-- Unlike log_level, `identity` is stored config: it is read on every request
 	-- that needs the account identity, not acted on once here.
 	vim.validate("identity", opts.identity, "string", true)
+	-- The layout options are checked in spacetime.config, beside the width
+	-- resolution that consumes them; required lazily so setup() stays cheap for
+	-- a user who never opens a window.
+	require("spacetime.config").validate_layout(opts)
 
 	-- Deep-merge user options over a fresh copy of the defaults, so dict-tables
 	-- merge recursively and a partial override keeps its unset siblings.

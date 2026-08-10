@@ -15,6 +15,7 @@ SpacetimeDB client library underneath (the role `gleam-spacetimedb` plays for Gl
 | Transport | **Direct HTTP** via `curl`, mirroring `spacetimedb-tui`. Not the `spacetime` CLI. |
 | UI | **Neovim-native**: sidebar tree buffer + content buffers + `:Spacetime*` commands. Not a TUI clone, and not a wrapper around the `spacetimedb-tui` binary. |
 | Entry point | **`:Spacetime` opens the full layout** — sidebar *and* content window — not just the sidebar. One front door; the other commands are shortcuts into it. |
+| Layout | **Replace the current view, in the current tabpage.** The current window becomes the content window (its buffer displaced) and the sidebar is split off beside it, full height; focus lands on the sidebar. Side and width are `setup()` options — `left` and `30` by default, width also accepting `"20%"`. |
 | Project awareness | A repo's `spacetime.json` / `spacetime.local.json` selects the server and database, so `:Spacetime` inside a module repo opens the right database. |
 | v1 scope | Browse databases → tables → schema → rows; log viewer with follow. |
 | Writes | Reducer calls only, and not in v1. No INSERT/UPDATE/DELETE. |
@@ -511,6 +512,29 @@ be one commit.
     rather than stacking duplicates. `open_layout()` returns both window handles and is
     idempotent, so re-running `:Spacetime` focuses the existing layout instead of
     splitting again.
+
+    Three details were settled here rather than left to the implementation:
+
+    - **Side and width are configuration, not constants.** `side` is `"left"` or
+      `"right"` (default `"left"`); `width` is a column count (default `30`) or a
+      percentage string like `"20%"` resolved against `vim.o.columns` *at call time*,
+      so one config suits a wide and a narrow terminal. Both are validated in
+      `config.lua` beside the connection options, and the resolved width is clamped to
+      `MIN_SIDEBAR_WIDTH` — a percentage of a narrow terminal rounds towards zero, and
+      a 0-column window is one the user can neither see nor close.
+    - **The layout replaces the current view, in the current tabpage** — the (neo)vim
+      convention. The current window becomes the content window (its buffer displaced);
+      the sidebar is a `topleft`/`botright vsplit`, so it is a full-height column beside
+      everything rather than a split of one window. No dedicated tabpage.
+    - **Focus is left on the sidebar**, because that is where task 24's keymaps operate.
+
+    **Reuse is detected by buffer name, not by a stored window handle.** `open_layout()`
+    looks for a window in the current tabpage already showing `spacetime://sidebar` or
+    `spacetime://content`; nothing is stashed in `state.lua`. A remembered winid goes
+    stale the moment the user runs `:only`, closes a window behind our back, or reloads a
+    session — and a stale handle is worse than none, because window ids are reused. A
+    buffer name survives all three, and the buffers are `bufhidden = "hide"`, so they
+    persist unshown until the layout is opened again.
 22. **`commands.lua` + registrations** — `:Spacetime`, `:SpacetimeToggle`,
     `:SpacetimeConnect [nick]`, `:SpacetimeDatabases`, `:SpacetimeTables [db]`,
     `:SpacetimeRows [db.]tbl`, `:SpacetimeSchema [db.]tbl`, `:SpacetimeLogs[!] [db]`,
