@@ -41,12 +41,12 @@ M.OWNER = "reducers"
 
 ---Every key the content window binds while it is showing reducers.
 ---
----Only the shared `q`: like the schema view this is text, with nothing to page,
----sort or filter. (The sidebar's `R` is what opens it; that is a mapping in the
----sidebar buffer, not in this one.) Applying it on every render is also what
----*unbinds* the row grid's keys — see point 4 of the module header.
+---Only the shared `q` and `<Tab>`: like the schema view this is text, with
+---nothing to page, sort or filter. (The sidebar's `R` is what opens it; that is a
+---mapping in the sidebar buffer, not in this one.) Applying them on every render
+---is also what *unbinds* the row grid's keys — see point 4 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = { require("spacetime.ui.keys").CLOSE }
+M.KEYMAPS = { require("spacetime.ui.keys").CLOSE, require("spacetime.ui.keys").FOCUS }
 
 local LOADING = "loading…"
 

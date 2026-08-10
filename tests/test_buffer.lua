@@ -224,6 +224,41 @@ T["unstyling the sidebar gives an ordinary window back"] = function()
 end
 
 --------------------------------------------------------------------------------
+-- Crossing the layout
+--------------------------------------------------------------------------------
+
+T["focus_other() goes from the sidebar to the content window"] = function()
+	child.lua([[ B.open_layout() ]])
+	-- `open_layout` leaves focus on the sidebar, which is where `<Tab>` starts.
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+
+	expect.equality(child.lua_get([[B.focus_other()]]), true)
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://content")
+end
+
+T["focus_other() comes back the other way"] = function()
+	child.lua([[
+    local _, content = B.open_layout()
+    vim.api.nvim_set_current_win(content)
+  ]])
+
+	expect.equality(child.lua_get([[B.focus_other()]]), true)
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+end
+
+-- Closed with `nvim_win_close` rather than `:q`: see the header.
+T["focus_other() is false when the counterpart is not on screen"] = function()
+	child.lua([[
+    local sidebar, content = B.open_layout()
+    vim.api.nvim_set_current_win(content)
+    vim.api.nvim_win_close(sidebar, true)
+  ]])
+
+	expect.equality(child.lua_get([[B.focus_other()]]), false)
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://content")
+end
+
+--------------------------------------------------------------------------------
 -- Counting windows
 --------------------------------------------------------------------------------
 

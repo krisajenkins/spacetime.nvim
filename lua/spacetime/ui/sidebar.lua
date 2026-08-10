@@ -253,10 +253,10 @@ end
 ---something. `ui/rows.lua` writes real content there, and reopening the layout
 ---must never clobber it — neither its lines nor the key map that goes with them.
 ---
----The placeholder gets the shared `q` and nothing else: `q` must work in the
----content window from the moment the layout opens, not only once a view has
----painted into it. Every view re-applies its own map on render, which puts this
----one back among the rest.
+---The placeholder gets the two shared keys and nothing else: `q` and `<Tab>` must
+---work in the content window from the moment the layout opens, not only once a
+---view has painted into it. Every view re-applies its own map on render, which
+---puts these back among the rest.
 ---@param bufnr integer
 local function place_placeholder(bufnr)
 	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -265,7 +265,7 @@ local function place_placeholder(bufnr)
 	end
 	local keys = require("spacetime.ui.keys")
 	require("spacetime.ui.buffer").set_lines(bufnr, M.PLACEHOLDER)
-	keys.apply(bufnr, { keys.CLOSE })
+	keys.apply(bufnr, { keys.CLOSE, keys.FOCUS })
 end
 
 --------------------------------------------------------------------------------
@@ -583,7 +583,7 @@ function M.reconnect()
 		buffer.claim_content(M.PLACEHOLDER_OWNER)
 		local keys = require("spacetime.ui.keys")
 		buffer.set_lines(content, M.PLACEHOLDER)
-		keys.apply(content, { keys.CLOSE })
+		keys.apply(content, { keys.CLOSE, keys.FOCUS })
 	end
 
 	fetch()
@@ -904,6 +904,10 @@ end
 ---deliberately the capital, because the lower-case `r` refreshes and must keep
 ---doing exactly that; `gl` and `gL` are `g`-prefixed, as `gi` already is, so `l`
 ---and `L` still move the cursor.
+---
+---The shared `<Tab>` shadows nothing in the tree either: the tree has no key of
+---its own on it, and buffer-local is as far as it reaches — the `<C-i>` most
+---terminals send `<Tab>` as still jumps forward everywhere but these two buffers.
 ---@type SpacetimeKeymap[]
 M.KEYMAPS = {
 	{
@@ -948,9 +952,10 @@ M.KEYMAPS = {
 			M.refresh()
 		end,
 	},
-	-- Shared with the content window, so `q` means the same thing from either
-	-- half of the layout.
+	-- Shared with the content window, so `q` and `<Tab>` mean the same thing from
+	-- either half of the layout.
 	require("spacetime.ui.keys").CLOSE,
+	require("spacetime.ui.keys").FOCUS,
 	{
 		keys = { "y" },
 		desc = "yank the node's name",

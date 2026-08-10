@@ -273,9 +273,9 @@ Where a name was written one way in the module and is spelled another way in
 SQL, both are shown — `ledgerEntry (ledger_entry)`. The SQL endpoint accepts
 either, so neither spelling is a trap.
 
-Nothing in this view is truncated, and the only key it binds is the shared `q`.
-The schema is the same one the sidebar caches, so describing a table in a
-database you have already expanded costs no request.
+Nothing in this view is truncated, and the only keys it binds are the shared
+`q` and `<Tab>`. The schema is the same one the sidebar caches, so describing a
+table in a database you have already expanded costs no request.
 
 ### `:SpacetimeReducers`
 
@@ -305,9 +305,10 @@ visibility field at all, and there the marker is **omitted entirely** rather
 than guessed at.
 
 The database may be left off, in which case it is the one the connection
-resolved to. Nothing here is truncated, the only key it binds is the shared
-`q`, and the schema is the same one the sidebar and the schema view share — so
-listing the reducers of a database you have already expanded costs no request.
+resolved to. Nothing here is truncated, the only keys it binds are the shared
+`q` and `<Tab>`, and the schema is the same one the sidebar and the schema view
+share — so listing the reducers of a database you have already expanded costs
+no request.
 
 ### `:SpacetimeLogs`
 
@@ -412,6 +413,7 @@ In the `spacetime://sidebar` buffer (filetype `spacetimetree`):
 | `gL`          | Follow those logs live                                 |
 | `r`           | Refresh: drop the cache and fetch again                |
 | `q`           | Close the layout                                       |
+| `<Tab>`       | Move to the other window of the layout                 |
 | `y`           | Yank the node's name                                   |
 | `gi`          | Yank the database's identity                           |
 | `?`           | Print this key map                                     |
@@ -432,15 +434,16 @@ rows, and clears a recorded pause, which is how you retry a paused database.
 
 In the content window *while it is showing a grid*:
 
-| Key  | Does                                                     |
-| ---- | -------------------------------------------------------- |
-| `s`  | Sort by the column under the cursor; again to reverse it |
-| `]p` | Next page (100 rows, over the SQL `OFFSET`)              |
-| `[p` | Previous page; nothing on the first one                  |
-| `y`  | Yank the cell under the cursor, untruncated              |
-| `Y`  | Yank the whole row as JSON                               |
-| `K`  | Float the whole row, every column untruncated            |
-| `q`  | Close the layout                                         |
+| Key     | Does                                                     |
+| ------- | -------------------------------------------------------- |
+| `s`     | Sort by the column under the cursor; again to reverse it |
+| `]p`    | Next page (100 rows, over the SQL `OFFSET`)              |
+| `[p`    | Previous page; nothing on the first one                  |
+| `y`     | Yank the cell under the cursor, untruncated              |
+| `Y`     | Yank the whole row as JSON                               |
+| `K`     | Float the whole row, every column untruncated            |
+| `q`     | Close the layout                                         |
+| `<Tab>` | Move to the other window of the layout                   |
 
 Yanks honour a register prefix (`"+y`) and your `clipboard` setting, exactly as
 any other yank would. In the `K` float, `q` or `<Esc>` closes the float — that
@@ -451,26 +454,33 @@ layout.
 
 In the content window *while it is showing logs*:
 
-| Key | Does                             |
-| --- | -------------------------------- |
-| `>` | Show only more severe log levels |
-| `<` | Show less severe log levels too  |
-| `q` | Close the layout                 |
+| Key     | Does                                   |
+| ------- | -------------------------------------- |
+| `>`     | Show only more severe log levels       |
+| `<`     | Show less severe log levels too        |
+| `q`     | Close the layout                       |
+| `<Tab>` | Move to the other window of the layout |
 
 ### Schema and reducers
 
 In the content window *while it is showing a schema or a reducer list*:
 
-| Key | Does             |
-| --- | ---------------- |
-| `q` | Close the layout |
+| Key     | Does                                   |
+| ------- | -------------------------------------- |
+| `q`     | Close the layout                       |
+| `<Tab>` | Move to the other window of the layout |
 
 The content window is shared by the four views, so each set of keys is
-unbound when another view takes the buffer over. `q` is common to all four —
-and to the sidebar — because the sidebar and the content window are one thing:
-closing either closes both, whichever window you press it in. The schema and
-reducers views bind nothing else: they are text, with nothing to page, sort or
-filter.
+unbound when another view takes the buffer over. `q` and `<Tab>` are common to
+all four — and to the sidebar — because the sidebar and the content window are
+one thing: closing either closes both, whichever window you press it in, and
+`<Tab>` crosses between them in either direction (there are two windows, so
+there is nothing for a `<S-Tab>` to do). The schema and reducers views bind
+nothing else: they are text, with nothing to page, sort or filter.
+
+In most terminals `<Tab>` is the same keystroke as `<C-i>`, so this mapping
+shadows jump-forward — but buffer-locally, in the plugin's two buffers only,
+and only while they are on screen.
 
 Closing never fails and never leaves one of the plugin's buffers on screen.
 When the layout is all that is left of the tabpage, the last window stays open

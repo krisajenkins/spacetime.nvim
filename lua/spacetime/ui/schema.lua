@@ -46,13 +46,13 @@ M.OWNER = "schema"
 
 ---Every key the content window binds while it is showing a schema.
 ---
----Only the shared `q`: the schema view is text, with nothing to page, sort or
----filter, and the one key it has is the one every buffer in the layout has. (The
----sidebar's `s` is what opens it; that is a mapping in the sidebar buffer, not in
----this one.) Applying it on every render is also what *unbinds* the row grid's
----keys — see point 4 of the module header.
+---Only the shared `q` and `<Tab>`: the schema view is text, with nothing to page,
+---sort or filter, so the keys it has are the ones every buffer in the layout has.
+---(The sidebar's `s` is what opens it; that is a mapping in the sidebar buffer,
+---not in this one.) Applying them on every render is also what *unbinds* the row
+---grid's keys — see point 4 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = { require("spacetime.ui.keys").CLOSE }
+M.KEYMAPS = { require("spacetime.ui.keys").CLOSE, require("spacetime.ui.keys").FOCUS }
 
 local LOADING = "loading…"
 

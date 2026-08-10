@@ -128,6 +128,7 @@ The sidebar then lists the databases belonging to your identity. From there:
     s       on a table or view shows its schema there instead; `R` lists the
             reducers of the database the cursor is inside, `gl` shows that
             database's logs, and `gL` follows them live.
+    <Tab>   moves to the other window of the layout, and again to come back.
     q       closes the layout and cancels anything in flight; the content
             window gets its original buffer back.
     ?       prints the sidebar's key map.
@@ -617,8 +618,8 @@ convenience rather than a trap. Where the two agree, only one name is printed.
 The rule is one function, shared by this view and the reducers view, so the
 two cannot disagree about what a dual name looks like.
 
-Nothing in this view is truncated, and the only key it binds is the shared `q`
-(|spacetime-keys-shared|).
+Nothing in this view is truncated, and the only keys it binds are the shared
+`q` and `<Tab>` (|spacetime-keys-shared|).
 
 THE REDUCERS VIEW                                    *spacetime-reducers-view*
 
@@ -651,8 +652,8 @@ the marker is OMITTED ENTIRELY rather than guessed at — an unknown visibility
 means "assume callable", because labelling every reducer `Private` would be a
 claim about your module rather than a report of what the server said.
 
-Nothing in this view is truncated either, and the only key it binds is the
-shared `q` (|spacetime-keys-shared|).
+Nothing in this view is truncated either, and the only keys it binds are the
+shared `q` and `<Tab>` (|spacetime-keys-shared|).
 
 ==============================================================================
 6. KEYMAPS                                                 *spacetime-keymaps*
@@ -671,6 +672,7 @@ you can hang your own autocommands or mappings off it: >
     gL          follow those logs live
     r           refresh: drop the cache and fetch again
     q           close the layout
+    <Tab>       move to the other window of the layout
     y           yank the node's name
     gi          yank the database identity
     ?           show this help
@@ -732,10 +734,12 @@ In the content window while it is showing a grid: >
     Y           yank the row as JSON
     K           show the whole row, every column untruncated
     q           close the layout
+    <Tab>       move to the other window of the layout
 <
 See |spacetime-grid-sort|, |spacetime-grid-paging| and |spacetime-grid-yank|.
-`q` is the shared key — see |spacetime-keys-shared|. In the `K` float it is a
-mapping in the float's own buffer, so there it closes the float instead.
+`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared|. In the `K`
+float `q` is a mapping in the float's own buffer, so there it closes the float
+instead; the float binds no `<Tab>` at all.
 
 LOGS                                                     *spacetime-keys-logs*
 
@@ -744,9 +748,11 @@ In the content window while it is showing logs: >
     >           show only more severe log levels
     <           show less severe log levels too
     q           close the layout
+    <Tab>       move to the other window of the layout
 <
-`q` is the shared key — see |spacetime-keys-shared|. The other two narrow and
-widen what is shown: `>` raises the minimum level by one step, `<` lowers it. >
+`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared|. The other
+two narrow and widen what is shown: `>` raises the minimum level by one step,
+`<` lowers it. >
 
     Trace  →  Debug  →  Info  →  Warn  →  Error
 <
@@ -773,11 +779,12 @@ SCHEMA AND REDUCERS      *spacetime-keys-schema* *spacetime-keys-reducers*
 In the content window while it is showing a schema or a reducer list: >
 
     q           close the layout
+    <Tab>       move to the other window of the layout
 <
-`q` is the shared key — see |spacetime-keys-shared| — and it is the only key
-either view binds: both are text, with nothing to page, sort or filter. The
-sidebar's `s` and `R` are what open them, and those are mappings in the
-sidebar buffer rather than in this one.
+`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared| — and they
+are the only keys either view binds: both are text, with nothing to page, sort
+or filter. The sidebar's `s` and `R` are what open them, and those are mappings
+in the sidebar buffer rather than in this one.
 
                                                        *spacetime-keys-shared*
 The content window is shared by the four views, so each set of keys is
@@ -785,10 +792,18 @@ unbound when another view takes the buffer over, and put back with the next
 one you open. A `]p` left behind could otherwise page a grid that is no longer
 on screen.
 
-`q` is the one key all four bind, and the sidebar binds it too: the sidebar
-and the content window are one thing, so closing either closes both, whichever
-window you press it in. The schema and reducers views bind nothing else: both
-are text, with nothing to page, sort or filter.
+`q` and `<Tab>` are the two keys all four bind, and the sidebar binds them
+too: the sidebar and the content window are one thing, so closing either closes
+both, whichever window you press it in, and `<Tab>` moves between them from
+either side. One key rather than a `<Tab>`/`<S-Tab>` pair, because there are
+exactly two windows — from either one, "the other" is unambiguous. If the
+counterpart is not on screen, `<Tab>` says so and nothing moves. The schema and
+reducers views bind nothing else: both are text, with nothing to page, sort or
+filter.
+
+In most terminals `<Tab>` arrives as `<C-i>`, so this mapping shadows
+|CTRL-I|'s jump forward. It is buffer-local, like every mapping here, so it
+does so in `spacetime://sidebar` and `spacetime://content` and nowhere else.
 
 BUFFERS AND WINDOWS                                       *spacetime-buffers*
 

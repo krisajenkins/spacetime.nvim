@@ -124,9 +124,10 @@ M.KEYMAPS = {
 			M.filter(-1)
 		end,
 	},
-	-- Shared with the sidebar and the grid: the layout is one thing, and `q`
-	-- closes it from either window.
+	-- Shared with the sidebar and the grid: the layout is one thing, so `q` closes
+	-- it and `<Tab>` crosses it from either window.
 	require("spacetime.ui.keys").CLOSE,
+	require("spacetime.ui.keys").FOCUS,
 }
 
 local LOADING = "loading…"

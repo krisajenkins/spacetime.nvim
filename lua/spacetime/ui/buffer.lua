@@ -322,6 +322,33 @@ function M.window_showing(bufnr)
 	return M.windows_showing(bufnr)[1]
 end
 
+---Move focus to the other half of the layout.
+---
+---What `<Tab>` does, from either window: there are exactly two of them, so one
+---key serves both directions and there is no `<S-Tab>`. Which half you are in is
+---decided by the buffer in the current window rather than by a window handle, for
+---the same reason the layout itself is found by name — so a `:split` of the
+---content window counts as "in the content window" and still tabs to the sidebar.
+---
+---Coming back the other way lands in |spacetime.ui.buffer.window_showing()| —
+---the first content window in the tabpage's order — because a split is still one
+---view of one buffer, and picking between the copies would be guesswork.
+---
+---A counterpart that is not on screen in the current tabpage is `false`, never an
+---error: the caller says so and does nothing.
+---@return boolean moved
+function M.focus_other()
+	local current = vim.api.nvim_get_current_win()
+	local in_sidebar = vim.api.nvim_win_get_buf(current) == M.find(M.SIDEBAR_NAME)
+	local target = M.find(in_sidebar and M.CONTENT_NAME or M.SIDEBAR_NAME)
+	local winid = target and M.window_showing(target)
+	if not winid or winid == current then
+		return false
+	end
+	vim.api.nvim_set_current_win(winid)
+	return true
+end
+
 ---Is `winid` a floating window?
 ---
 ---Floats are in `nvim_tabpage_list_wins`, so a window count that does not filter

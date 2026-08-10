@@ -204,6 +204,17 @@ T["the content window shows a placeholder until something is selected"] = functi
 	expect.equality(buffer_lines("spacetime://content"), child.lua_get([[S.PLACEHOLDER]]))
 end
 
+T["<Tab> crosses the layout and comes back"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+
+	child.type_keys("<Tab>")
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://content")
+
+	child.type_keys("<Tab>")
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+end
+
 T["q closes the layout and cancels what is in flight"] = function()
 	-- A responder that never answers, so there is something to cancel.
 	child.lua([[ RESPONDER = function() return nil end ]])

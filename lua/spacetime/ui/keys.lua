@@ -13,9 +13,10 @@
 -- call put in the buffer comes off first, and a view whose only key is the
 -- shared `q` (the schema view) clears the buffer by asking for that alone.
 --
--- One mapping is defined here rather than by a view: `M.CLOSE`. Every buffer the
--- plugin paints binds it, by listing it in its own `KEYMAPS`, so the tables stay
--- the single source of truth for the documentation and for the sidebar's `?`.
+-- Two mappings are defined here rather than by a view: `M.CLOSE` and `M.FOCUS`.
+-- Every buffer the plugin paints binds them, by listing them in its own
+-- `KEYMAPS`, so the tables stay the single source of truth for the documentation
+-- and for the sidebar's `?`.
 --
 -- What was applied is tracked here rather than read back from Neovim, because
 -- `nvim_buf_get_keymap` cannot tell one of ours from one the user set: deleting
@@ -33,7 +34,7 @@ local M = {}
 ---@field desc string Shown in `:map` and printed by the sidebar's `?`.
 ---@field action fun()
 
----The one key every spacetime buffer binds: the sidebar and the content window
+---The key every spacetime buffer binds: the sidebar and the content window
 ---are one thing, so `q` closes the layout from either side.
 ---
 ---Defined once and listed by each view's `KEYMAPS`, so the sidebar's `?`, the
@@ -46,6 +47,26 @@ M.CLOSE = {
 	desc = "close the layout",
 	action = function()
 		require("spacetime.ui.sidebar").close()
+	end,
+}
+
+---The other shared key: `<Tab>` moves between the two windows of the layout.
+---
+---One key rather than a `<Tab>`/`<S-Tab>` pair, because there are exactly two
+---windows — from either one, "the other" is unambiguous. The `K` float does not
+---bind it: it keeps `q` and `<Esc>` alone.
+---
+---A counterpart that is not on screen is reported and nothing moves, which is the
+---same rule the sidebar's own keys follow: a key that does not apply says so and
+---does nothing.
+---@type SpacetimeKeymap
+M.FOCUS = {
+	keys = { "<Tab>" },
+	desc = "move to the other window of the layout",
+	action = function()
+		if not require("spacetime.ui.buffer").focus_other() then
+			require("spacetime.logger").warn("the other half of the layout is not open")
+		end
 	end,
 }
 

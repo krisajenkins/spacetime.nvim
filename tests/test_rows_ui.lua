@@ -828,4 +828,18 @@ T["q from the content window closes the whole layout too"] = function()
 	expect.equality(#shown, 1)
 end
 
+-- The other shared key, and the reason it is worth a case here rather than only
+-- in `tests/test_buffer.lua`: the grid rebinds the shared content buffer on every
+-- render, so `<Tab>` has to survive that rebind rather than only the layout.
+T["<Tab> from the grid moves back to the sidebar"] = function()
+	serve_sql('"alpha"', 200, one_column("alpha_id", "from alpha"))
+	expand_to(2)
+
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.type_keys("<Tab>")
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+end
+
 return T

@@ -715,10 +715,12 @@ M.KEYMAPS = {
 			M.detail()
 		end,
 	},
-	-- Shared with the sidebar and the log view: the layout is one thing, and `q`
-	-- closes it from either window. The `K` float's own `q` is a mapping in the
-	-- float's buffer, so it still wins there and still only closes the float.
+	-- Shared with the sidebar and the log view: the layout is one thing, so `q`
+	-- closes it and `<Tab>` crosses it from either window. The `K` float's own `q`
+	-- is a mapping in the float's buffer, so it still wins there and still only
+	-- closes the float; the float binds no `<Tab>` at all.
 	require("spacetime.ui.keys").CLOSE,
+	require("spacetime.ui.keys").FOCUS,
 }
 
 ---Bind every content-window key, buffer-locally.

@@ -451,18 +451,19 @@ end
 
 T["switching to the logs and back leaves no stale keymaps"] = function()
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
-	-- The log view's own two keys plus the shared `q`, and not one of the grid's: a
-	-- stale `]p` must not page a grid that is no longer displayed. Neovim reports a
-	-- `<` mapping's left-hand side as `<lt>`, which is the same key.
-	expect.equality(content_keys(), { "<lt>", ">", "q" })
+	-- The log view's own two keys plus the shared `q` and `<Tab>`, and not one of
+	-- the grid's: a stale `]p` must not page a grid that is no longer displayed.
+	-- Neovim reports a `<` mapping's left-hand side as `<lt>`, which is the same
+	-- key.
+	expect.equality(content_keys(), { "<Tab>", "<lt>", ">", "q" })
 	expect.equality(#entry_lines(), 11)
 
 	-- And going back to the grid binds them again, over the logs.
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
 	expect.equality(content_lines()[1]:find("1 row", 1, true) ~= nil, true)
 end
 
@@ -488,7 +489,7 @@ T["a log response that lands after the rows view took the buffer is dropped"] = 
 
 	-- The grid is still on screen, and the log lines went nowhere near it.
 	expect.equality(content_lines()[1]:find("1 row", 1, true) ~= nil, true)
-	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
 end
 
 return T
