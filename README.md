@@ -246,10 +246,10 @@ rather than painted over the table you are now looking at.
 
 `:SpacetimeSchema spacegym.ledgerEntry` describes one table in the content
 window: its columns with their resolved types, then its indexes and its
-constraints. Views are described too — a view has neither indexes nor
-constraints, and says so. Reducers are not here: they belong to the database
-rather than to any one of its tables, so they have a view of their own
-([`:SpacetimeReducers`](#spacetimereducers)).
+constraints. Views are described too — a view can have neither indexes nor
+constraints, so those two sections are simply absent. Reducers are not here:
+they belong to the database rather than to any one of its tables, so they have
+a view of their own ([`:SpacetimeReducers`](#spacetimereducers)).
 
 ```
 ledgerEntry (ledger_entry)

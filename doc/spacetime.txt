@@ -602,8 +602,9 @@ typespace, so a reference reads as the name the module gave it and an
 unrecognised newtype is shown as the plain product it is rather than guessed
 at. `PK` marks the primary key and `autoinc` a sequence-backed column.
 
-A view has neither indexes nor constraints, and the headings say "(none)"
-rather than disappearing.
+A view can have neither indexes nor constraints, so those two sections are
+omitted for one entirely: only its title, its kind line and its columns are
+shown.
 
 The reducers are not here: they belong to the database rather than to any one
 of its tables, so they have a view of their own — |spacetime-reducers-view|.

@@ -209,10 +209,11 @@ T["either spelling of the table names it, and a view says it is one"] = function
 	local lines = content_lines()
 	expect.equality(lines[1], "meView (me_view)")
 	expect.equality(lines[2]:find("view · ", 1, true), 1)
-	-- A view has no indexes and no constraints, and says so rather than dropping
-	-- the headings.
-	expect.equality(section("Indexes"), { "  (none)" })
-	expect.equality(section("Constraints"), { "  (none)" })
+	-- Issue #45: a view can never have either, so the sections are dropped rather
+	-- than left reading "(none)" on every view forever.
+	for _, needle in ipairs({ "Indexes", "Constraints" }) do
+		expect.equality({ needle, line_with(lines, needle) }, { needle, nil })
+	end
 end
 
 --------------------------------------------------------------------------------

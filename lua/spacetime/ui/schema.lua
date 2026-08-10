@@ -242,10 +242,13 @@ local function build(current)
 	local sink = sections.new()
 	heading(sink, entry, schema)
 	columns_section(sink, entry, schema)
-	-- A view has neither, and says so rather than dropping the headings: "this
-	-- view has no indexes" is a fact worth stating.
-	indexes_section(sink, entry)
-	constraints_section(sink, entry)
+	-- Only a table has these. A view carries no index or constraint field in
+	-- either wire shape (`lib/schema.make_view`), so the headings could only ever
+	-- read `(none)`.
+	if not entry.is_view then
+		indexes_section(sink, entry)
+		constraints_section(sink, entry)
+	end
 
 	return sink.lines, sink.spans
 end
