@@ -1,10 +1,9 @@
 -- The transport: turn a request table into a curl invocation, run it, and turn
 -- the head of a `curl -i` response back into data.
 --
--- `build` and `parse_head` are pure — no process is spawned, nothing is
--- scheduled, and no `vim.api`/`vim.fn`/`vim.notify` call is made. `request`
--- sits on top of the pair and owns all of the I/O; `stream()` (ROADMAP.md,
--- task 14) will join it there.
+-- `build`, `parse_head` and `new_line_splitter` are pure — no process is
+-- spawned, nothing is scheduled, and no `vim.api`/`vim.fn`/`vim.notify` call is
+-- made. `request` and `stream` sit on top of them and own all of the I/O.
 --
 -- Why the invocation looks the way it does:
 --
@@ -401,6 +400,234 @@ function M.request(req, on_done)
 					proc:kill("sigterm")
 				end)
 			end
+		end,
+	}
+end
+
+---Build a chunk-to-line splitter.
+---
+---`vim.system`'s stdout callback delivers whatever bytes happened to arrive, so
+---a line may be split across any number of chunks — and the split may land
+---between the `\r` and the `\n` of a CRLF. The rule that makes every chunking
+---equivalent: **split only on `\n`, and strip the trailing `\r` from the
+---assembled line afterwards.** A `\r` that ends one chunk simply waits in the
+---buffer for the `\n` that opens the next, with no lookahead and no special
+---case.
+---
+---Pure: no process, no scheduling, no vim API. Empty interior lines are emitted
+---as `""`; a trailing empty line is not, so a body that ends in a newline and
+---one that does not agree on everything but the final line.
+---@param on_line fun(line: string) Called once per complete line, terminator stripped.
+---@return fun(chunk: string|nil) feed Feed bytes. `nil` is EOF: flush the partial line.
+function M.new_line_splitter(on_line)
+	if type(on_line) ~= "function" then
+		error("spacetime.lib.http: new_line_splitter needs an on_line callback", 2)
+	end
+
+	-- Fragments of the line that has not seen its `\n` yet. Concatenated rather
+	-- than appended to a string, so a line arriving one byte at a time does not
+	-- cost O(n^2) in copies.
+	local pending = {} ---@type string[]
+	local done = false
+
+	---@param line string
+	local function emit(line)
+		-- The parens matter: `gsub` returns a count too, and it would arrive as
+		-- `on_line`'s second argument.
+		on_line((line:gsub("\r$", "")))
+	end
+
+	return function(chunk)
+		if chunk == nil then
+			-- EOF. Idempotent, because both the stdout EOF and the process exit
+			-- flush, and only the first of them has anything left to say.
+			if done then
+				return
+			end
+			done = true
+			local rest = table.concat(pending)
+			pending = {}
+			if rest ~= "" then
+				emit(rest)
+			end
+			return
+		end
+
+		local pos = 1
+		while true do
+			local stop = chunk:find("\n", pos, true)
+			if not stop then
+				break
+			end
+			pending[#pending + 1] = chunk:sub(pos, stop - 1)
+			local line = table.concat(pending)
+			pending = {}
+			emit(line)
+			pos = stop + 1
+		end
+		if pos <= #chunk then
+			pending[#pending + 1] = chunk:sub(pos)
+		end
+	end
+end
+
+-- A head this large is not a head: it is a server that never sent the blank
+-- line, and buffering it forever would be the only symptom.
+local MAX_HEAD_BYTES = 65536
+
+---Stream a response, one line at a time.
+---
+---`on_line` runs in a |fast-event| context: it may only touch plain Lua tables,
+---never `vim.api`/`vim.fn`. This is the single deliberate exception to the rule
+---that every callback above this module is `vim.schedule_wrap`ped — scheduling
+---once per line would defeat the point of streaming. `on_done` is scheduled as
+---usual.
+---
+---The head/body switch never inspects a chunk for `\r\n\r\n`: chunks are
+---accumulated and `parse_head` is retried on the whole accumulation, which
+---returns `nil` until the terminator is complete. That is why a chunk boundary
+---falling inside the terminator needs no code of its own.
+---
+---A non-2xx response is surfaced rather than streamed: no line is emitted, the
+---body is accumulated and handed to `on_done` as a response (the 503 "database
+---is paused" case). Mapping that status to a user-facing error is
+---`lib/client.lua`'s job, not this one's.
+---
+---Cancellation contract: `kill()` is idempotent, and a cancelled stream is not
+---an error — `on_done(nil, nil)` still fires exactly once, so a consumer can
+---tear down its flush timer from one place.
+---@param req SpacetimeHttpRequest `stream` is forced on; the caller's table is not modified.
+---@param on_line fun(line: string) Fast-event context. Plain tables only.
+---@param on_done fun(err: string|nil, response: SpacetimeHttpResponse|nil) Main loop. Fires once.
+---@return SpacetimeHttpHandle
+function M.stream(req, on_line, on_done)
+	if type(req) ~= "table" then
+		error("spacetime.lib.http: request must be a table", 2)
+	end
+	if type(on_line) ~= "function" then
+		error("spacetime.lib.http: stream needs an on_line callback", 2)
+	end
+	if type(on_done) ~= "function" then
+		error("spacetime.lib.http: stream needs an on_done callback", 2)
+	end
+
+	local cmd = M.build(vim.tbl_extend("force", req, { stream = true }) --[[@as SpacetimeHttpRequest]])
+
+	local cancelled = false
+	local finished = false
+	local proc ---@type table|nil
+	local head ---@type SpacetimeHttpHead|nil
+	local head_buf = ""
+	local head_err ---@type string|nil
+	local feed ---@type fun(chunk: string|nil)|nil
+	local body = {} ---@type string[] Non-2xx only: what would have been lines.
+
+	local deliver = vim.schedule_wrap(function(err, response)
+		if finished then
+			return
+		end
+		finished = true
+		if cancelled then
+			-- Stopping a follow is not a failure; report neither error nor
+			-- response, but do report.
+			on_done(nil, nil)
+		else
+			on_done(err, response)
+		end
+	end)
+
+	local function stop_process()
+		if proc then
+			-- The process may already have exited, in which case libuv's handle
+			-- is closed and `kill` raises.
+			pcall(function()
+				proc:kill("sigterm")
+			end)
+		end
+	end
+
+	---@param data string|nil `nil` is stdout EOF.
+	local function on_stdout(_, data)
+		if cancelled or head_err then
+			return
+		end
+
+		if data == nil then
+			-- Flush whatever never got its newline: a final log line with no
+			-- trailing terminator still reaches the caller.
+			if feed then
+				feed(nil)
+			end
+			return
+		end
+
+		if head then
+			if feed then
+				feed(data)
+			else
+				body[#body + 1] = data
+			end
+			return
+		end
+
+		head_buf = head_buf .. data
+		if #head_buf > MAX_HEAD_BYTES then
+			head_err = ("response head exceeded %d bytes"):format(MAX_HEAD_BYTES)
+			stop_process()
+			return
+		end
+
+		local ok, parsed = pcall(M.parse_head, head_buf)
+		if not ok then
+			-- Strip the "file:line: " that `error(msg, 2)` prepends inside
+			-- `parse_head`; the parens keep `gsub`'s count out of the arguments.
+			head_err = (tostring(parsed):gsub("^.-:%d+: ", ""))
+			stop_process()
+			return
+		elseif not parsed then
+			-- Head still incomplete: wait for more bytes.
+			return
+		end
+
+		head = parsed
+		head_buf = ""
+		if parsed.status >= 200 and parsed.status < 300 then
+			feed = M.new_line_splitter(on_line)
+			-- `rest` is byte-exact, so a partial first line buffers like any other.
+			feed(parsed.rest)
+		else
+			body[#body + 1] = parsed.rest
+		end
+	end
+
+	-- No `timeout` (a follow is meant to last) and no `text = true` (it rewrites
+	-- CRLF, which would corrupt both the head framing and the line framing).
+	proc = M._system(cmd.argv, { stdin = cmd.stdin, stdout = on_stdout }, function(out)
+		if feed then
+			feed(nil)
+		end
+		if head_err then
+			deliver(head_err, nil)
+		elseif out.code ~= 0 then
+			deliver(classify_exit(out.code, out.stderr), nil)
+		elseif not head then
+			deliver("spacetime.lib.http: response ended before the head was complete", nil)
+		else
+			-- On the streaming path the body left as lines, so it is empty here.
+			deliver(nil, { status = head.status, headers = head.headers, body = table.concat(body) })
+		end
+	end)
+
+	return {
+		kill = function()
+			if cancelled then
+				return
+			end
+			cancelled = true
+			stop_process()
+			-- Fire now rather than waiting for the exit: the process may take a
+			-- moment to die, and `deliver`'s guard keeps it to one call either way.
+			deliver(nil, nil)
 		end,
 	}
 end

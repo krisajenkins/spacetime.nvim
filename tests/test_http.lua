@@ -434,4 +434,298 @@ T["request validates its arguments"] = function()
 	end, "must be a table")
 end
 
+-- A stand-in for the `nil` chunk that means EOF: `nil` itself cannot sit in a
+-- list literal without truncating it.
+local EOF = {}
+
+---Collect what a splitter emits for a sequence of chunks.
+---@param chunks table[] Strings, plus `EOF` wherever the stream should flush.
+---@return string[]
+local function split(chunks)
+	local lines = {}
+	local feed = http.new_line_splitter(function(line)
+		lines[#lines + 1] = line
+	end)
+	for _, chunk in ipairs(chunks) do
+		feed(chunk ~= EOF and chunk or nil)
+	end
+	return lines
+end
+
+T["the splitter joins a line spread across chunks"] = function()
+	expect.equality(split({ "hel", "lo\nwor", "ld\n" }), { "hello", "world" })
+end
+
+T["the splitter is chunk-invariant across a CRLF"] = function()
+	-- The boundary falls between the `\r` and the `\n`: the `\r` waits in the
+	-- buffer and is stripped from the assembled line, not from the chunk.
+	expect.equality(split({ "a\r", "\nb\r\n" }), { "a", "b" })
+end
+
+T["the splitter emits a trailing partial line at EOF"] = function()
+	expect.equality(split({ "a\nb", EOF }), { "a", "b" })
+	expect.equality(split({ "a\nb\r", EOF }), { "a", "b" })
+end
+
+T["EOF is idempotent and adds no empty final line"] = function()
+	-- A body ending in `\n` must not emit a spurious `""`, or the "all chunkings
+	-- identical" invariant would depend on whether the last line was terminated.
+	expect.equality(split({ "a\n", EOF, EOF }), { "a" })
+	expect.equality(split({ "a\nb", EOF, EOF }), { "a", "b" })
+	expect.equality(split({ EOF }), {})
+end
+
+T["an interior empty line is emitted"] = function()
+	expect.equality(split({ "a\n\nb\n" }), { "a", "", "b" })
+	expect.equality(split({ "" }), {})
+end
+
+T["the splitter validates its argument"] = function()
+	expect.error(function()
+		http.new_line_splitter(nil)
+	end, "on_line")
+end
+
+---A `vim.system` stand-in that pushes `chunks` at the stdout callback, closes
+---stdout, then exits. Synchronous, like the real callback, which runs in a
+---fast-event context rather than on the main loop.
+---@param chunks string[]
+---@param out? table Defaults to a clean exit.
+---@return function
+local function streams(chunks, out)
+	return function(_, opts, on_exit)
+		for _, chunk in ipairs(chunks) do
+			opts.stdout(nil, chunk)
+		end
+		opts.stdout(nil, nil)
+		on_exit(out or { code = 0, stderr = "" })
+		return { kill = function() end }
+	end
+end
+
+---Run a stream over canned chunks and report the lines and the completion.
+---@param chunks string[]
+---@param out? table
+---@return string[] lines
+---@return table completion `{ err = ..., response = ... }`
+local function stream_over(chunks, out)
+	local lines, got = {}, nil
+	with_system(streams(chunks, out), function()
+		http.stream({ url = URL }, function(line)
+			lines[#lines + 1] = line
+		end, function(err, response)
+			got = { err = err, response = response }
+		end)
+		wait_for(function()
+			return got ~= nil
+		end)
+	end)
+	return lines, got
+end
+
+local STREAM_HEAD = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n"
+local STREAM_BODY = '{"a":1}\n{"b":2}\n{"c":3}\n'
+local STREAM_LINES = { '{"a":1}', '{"b":2}', '{"c":3}' }
+
+T["all three chunkings of one response yield identical lines"] = function()
+	local response = STREAM_HEAD .. STREAM_BODY
+
+	local per_byte = {}
+	for i = 1, #response do
+		per_byte[i] = response:sub(i, i)
+	end
+
+	-- The boundary lands *inside* the head terminator, after `...\r\n\r`. This
+	-- is the case that breaks an implementation which hunts for `\r\n\r\n`
+	-- within a single chunk.
+	local at = response:find("\r\n\r\n", 1, true)
+	local split_terminator = { response:sub(1, at + 2), response:sub(at + 3) }
+	expect.equality(split_terminator[1]:sub(-3), "\r\n\r")
+	expect.equality(split_terminator[2]:sub(1, 1), "\n")
+
+	local a = stream_over(per_byte)
+	local b = stream_over({ response })
+	local c = stream_over(split_terminator)
+
+	expect.equality(a, STREAM_LINES)
+	expect.equality(b, a)
+	expect.equality(c, a)
+end
+
+T["a 2xx stream reports its head with an empty body"] = function()
+	local lines, got = stream_over({ STREAM_HEAD .. STREAM_BODY })
+	expect.equality(lines, STREAM_LINES)
+	expect.equality(got.err, nil)
+	expect.equality(got.response.status, 200)
+	expect.equality(got.response.headers["content-type"], "application/json")
+	-- The body left as lines; nothing is buffered up for the finish callback.
+	expect.equality(got.response.body, "")
+end
+
+T["a final line with no trailing newline still arrives, before on_done"] = function()
+	local order = {}
+	with_system(streams({ STREAM_HEAD .. '{"a":1}\n{"b":2}' }), function()
+		local done = false
+		http.stream({ url = URL }, function(line)
+			order[#order + 1] = line
+		end, function()
+			order[#order + 1] = "done"
+			done = true
+		end)
+		wait_for(function()
+			return done
+		end)
+	end)
+	expect.equality(order, { '{"a":1}', '{"b":2}', "done" })
+end
+
+T["a 503 body is surfaced rather than streamed as lines"] = function()
+	local lines, got = stream_over({ "HTTP/1.1 503 Service Unavailable\r\n\r\ndatabase is paused" })
+	expect.equality(lines, {})
+	-- No error: mapping status to a message is `lib/client.lua`'s job.
+	expect.equality(got.err, nil)
+	expect.equality(got.response.status, 503)
+	expect.equality(got.response.body, "database is paused")
+end
+
+T["a non-2xx body split across chunks is reassembled"] = function()
+	local lines, got = stream_over({ "HTTP/1.1 503 Service Unavailable\r\n\r\ndatabase ", "is paused" })
+	expect.equality(lines, {})
+	expect.equality(got.response.body, "database is paused")
+end
+
+T["a stream maps a non-zero exit code the same way a request does"] = function()
+	local _, got = stream_over({}, { code = 7, stderr = "curl: (7) Failed to connect" })
+	expect.equality(got.err, "connection refused")
+	expect.equality(got.response, nil)
+end
+
+T["a garbage status line ends the stream with an error"] = function()
+	local lines, got = stream_over({ "<html><head><title>Corporate Proxy</title>\r\n\r\n" })
+	expect.equality(lines, {})
+	expect.no_equality(got.err:find("unparseable status line", 1, true), nil)
+	expect.equality(got.response, nil)
+end
+
+T["a stream that ends before its head completes is an error"] = function()
+	local _, got = stream_over({ "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n" })
+	expect.no_equality(got.err:find("before the head was complete", 1, true), nil)
+	expect.equality(got.response, nil)
+end
+
+T["a stream spawns the streaming argv with the token on stdin"] = function()
+	local seen
+	local req = { url = URL, token = TOKEN }
+	with_system(function(cmd, opts, on_exit)
+		seen = { cmd = cmd, opts = opts }
+		opts.stdout(nil, "HTTP/1.1 200 OK\r\n\r\n")
+		opts.stdout(nil, nil)
+		on_exit({ code = 0, stderr = "" })
+		return { kill = function() end }
+	end, function()
+		local done = false
+		http.stream(req, function() end, function()
+			done = true
+		end)
+		wait_for(function()
+			return done
+		end)
+	end)
+	local built = http.build({ url = URL, token = TOKEN, stream = true })
+	expect.equality(seen.cmd, built.argv)
+	expect.equality(seen.opts.stdin, built.stdin)
+	expect.equality(table.concat(seen.cmd, " "):find(TOKEN, 1, true), nil)
+	-- `--no-buffer` yes, `--max-time` no: a follow is meant to last.
+	expect.equality(vim.tbl_contains(seen.cmd, "--no-buffer"), true)
+	expect.equality(vim.tbl_contains(seen.cmd, "--max-time"), false)
+	-- `text = true` would rewrite CRLF and corrupt the framing; `timeout` would
+	-- kill a healthy follow.
+	expect.equality(seen.opts.text, nil)
+	expect.equality(seen.opts.timeout, nil)
+	-- The caller's table is left alone.
+	expect.equality(req.stream, nil)
+end
+
+T["a line is delivered unscheduled while on_done is not"] = function()
+	-- The one deliberate exception to the scheduling rule: lines come straight
+	-- out of the stdout callback, which is why `on_line` may only touch plain
+	-- tables. `on_done` keeps the usual main-loop guarantee.
+	local sync, done = false, false
+	with_system(streams({ STREAM_HEAD .. "one\n" }), function()
+		http.stream({ url = URL }, function()
+			sync = true
+		end, function()
+			done = true
+		end)
+		-- The stub ran the whole stream before returning.
+		expect.equality(sync, true)
+		expect.equality(done, false)
+		wait_for(function()
+			return done
+		end)
+	end)
+end
+
+T["kill() stops the lines and still finishes exactly once"] = function()
+	local lines, calls, got = {}, 0, nil
+	local emit, exit
+	with_system(function(_, opts, on_exit)
+		-- Hold both callbacks, so the kill can land between two chunks.
+		emit, exit = opts.stdout, on_exit
+		return { kill = function() end }
+	end, function()
+		local handle = http.stream({ url = URL }, function(line)
+			lines[#lines + 1] = line
+		end, function(err, response)
+			calls = calls + 1
+			got = { err = err, response = response }
+		end)
+		emit(nil, STREAM_HEAD .. "first\n")
+		handle:kill()
+		emit(nil, "second\n")
+		-- curl dies of the SIGTERM afterwards; that must not become a second
+		-- callback, nor an error.
+		exit({ code = 143, stderr = "" })
+		wait_for(function()
+			return got ~= nil
+		end)
+		vim.wait(50)
+	end)
+	expect.equality(lines, { "first" })
+	expect.equality(calls, 1)
+	expect.equality(got.err, nil)
+	expect.equality(got.response, nil)
+end
+
+T["kill() is idempotent and propagates to the process"] = function()
+	local killed, signal = 0, nil
+	with_system(function()
+		return {
+			kill = function(_, sig)
+				killed = killed + 1
+				signal = sig
+			end,
+		}
+	end, function()
+		local handle = http.stream({ url = URL }, function() end, function() end)
+		handle:kill()
+		expect.equality(killed, 1)
+		expect.equality(signal, "sigterm")
+		handle:kill()
+		expect.equality(killed, 1)
+	end)
+end
+
+T["stream validates its arguments"] = function()
+	expect.error(function()
+		http.stream("nope", function() end, function() end)
+	end, "must be a table")
+	expect.error(function()
+		http.stream({ url = URL }, nil, function() end)
+	end, "on_line")
+	expect.error(function()
+		http.stream({ url = URL }, function() end, nil)
+	end, "on_done")
+end
+
 return T
