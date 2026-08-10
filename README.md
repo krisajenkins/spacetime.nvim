@@ -13,10 +13,8 @@ The plugin talks to SpacetimeDB's HTTP API directly, over `curl`. It never
 shells out to the `spacetime` CLI to browse — it only reads the CLI's config
 file for your server list and token.
 
-> **Status: early.** Two commands in the set are still placeholders and say so
-> when you run them — `:SpacetimeConnect` and `:SpacetimeTables`. Everything
-> else in this README is implemented. Browsing is read-only: there is no way to
-> write a row or call a reducer from here yet.
+> **Status: early.** Everything in this README is implemented. Browsing is
+> read-only: there is no way to write a row or call a reducer from here yet.
 
 ## Requirements
 
@@ -133,27 +131,24 @@ buffer.
 
 ## Commands
 
-| Command                    | Does                                                 |
-| -------------------------- | ---------------------------------------------------- |
-| `:Spacetime`               | Open the browser: layout plus your database list     |
-| `:SpacetimeToggle`         | Open the browser, or close it if it is open          |
-| `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
-| `:SpacetimeDatabases`      | Open the browser and refetch the database list       |
-| `:SpacetimeTables [db]`    | List a database's tables — *placeholder*             |
-| `:SpacetimeRows {tbl}`     | Browse the rows of `[db.]tbl`                        |
-| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`                        |
-| `:SpacetimeReducers [db]`  | List a database's reducers                           |
-| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` follows them live        |
-| `:SpacetimeLogsStop`       | Stop following logs                                  |
-| `:SpacetimeStatus`         | Print the resolved connection                        |
+| Command                     | Does                                             |
+| --------------------------- | ------------------------------------------------ |
+| `:Spacetime`                | Open the browser: layout plus your database list |
+| `:SpacetimeToggle`          | Open the browser, or close it if it is open      |
+| `:SpacetimeConnect[!] [nk]` | Switch server by `cli.toml` nickname             |
+| `:SpacetimeDatabases`       | Open the browser and refetch the database list   |
+| `:SpacetimeRows {tbl}`      | Browse the rows of `[db.]tbl`                    |
+| `:SpacetimeSchema {tbl}`    | Show the schema of `[db.]tbl`                    |
+| `:SpacetimeReducers [db]`   | List a database's reducers                       |
+| `:SpacetimeLogs[!] [db]`    | Show a database's logs; `!` follows them live    |
+| `:SpacetimeLogsStop`        | Stop following logs                              |
+| `:SpacetimeStatus`          | Print the resolved connection                    |
 
 Every command is `bar`-safe, so it can be chained with `|`.
 
-A ***placeholder*** command exists, completes its argument, and notifies you
-that it is not implemented yet. It never errors and never changes anything —
-`:SpacetimeConnect` does *not* switch servers today, and `:SpacetimeTables`
-does not list anything. Use `setup({ server = … })`, `SPACETIMEDB_SERVER` or a
-project file to choose a server, and the sidebar to see a database's tables.
+There is no `:SpacetimeTables`. The sidebar *is* the table list — with the
+access icons, and with the schema, the rows and the logs hanging off it — so a
+second way to see the same names would be a second thing to keep true.
 
 Where a command takes `[db.]tbl`, the database may be left off
 (`:SpacetimeRows member`), in which case it is the one the connection resolved
@@ -170,11 +165,48 @@ appear; run the command once and it will complete thereafter.
 
 - `:SpacetimeConnect` — nicknames from your `cli.toml`. A local file read; the
   tokens in that file are never touched.
-- `:SpacetimeTables`, `:SpacetimeReducers`, `:SpacetimeLogs` — cached database
-  names.
+- `:SpacetimeReducers`, `:SpacetimeLogs` — cached database names.
 - `:SpacetimeRows`, `:SpacetimeSchema` — cached `db.table`, in both the source
   and the SQL spelling where they differ (`spacegym.ledgerEntry` and
   `spacegym.ledger_entry`). Only the qualified form is offered.
+
+### `:SpacetimeConnect`
+
+`:SpacetimeConnect maincloud` points the rest of the session at that
+`cli.toml` server. It is the only way to change server without editing your
+config: `setup({ server = … })`, `SPACETIMEDB_SERVER` and the project file are
+all read when a connection is resolved, and this sits above all three.
+
+Above them because it is the one source that is an *action* rather than a
+setting — you typed it more recently than you wrote any of them — and it
+therefore beats an explicit `host`/`port` too, from `setup()` or from the
+environment. Anything else would let a `SPACETIMEDB_HOST` in your shell win
+and make the command look broken. What a nickname says nothing about is left
+alone: the token, and the database your project file names.
+
+```vim
+:SpacetimeConnect              " where am I, and what else is on offer?
+:SpacetimeConnect maincloud    " go there
+:SpacetimeConnect!             " forget it; back to what the config resolves to
+```
+
+With no argument it reports rather than switches — the server you are on, the
+nickname selected if there is one, and the nicknames `cli.toml` offers. A
+nickname that is not in `cli.toml` is refused with the list of the ones that
+are, and **the selection does not change**: a typo cannot disconnect you.
+
+A switch is a clean break. Everything in flight is cancelled, a log follow is
+stopped, and the whole cache — the database list, every schema, every page of
+rows — is dropped, because all of it is what the *old* server said. An open
+layout re-resolves and refetches on the spot, and the content window goes back
+to its placeholder rather than leaving another server's rows on screen. Your
+expanded databases stay expanded; that is your arrangement of the tree, not
+anything a server told us.
+
+The bang is the undo, and it is the only way back when the address you started
+from came from a `host`/`port` rather than a nickname you could retype.
+`:SpacetimeStatus` marks a selected server, so a pasted report never names a
+server that appears in none of your files.
 
 ### `:SpacetimeRows` — the grid
 
@@ -346,7 +378,9 @@ project:      /path/to/repo/spacetime.json (database: spacegym)
 
 - `server` — the nickname you asked for (or the hostname, if you named one by
   hand) and the resolved base URL, whose scheme carries TLS and whose port is
-  always explicit.
+  always explicit. A server chosen with `:SpacetimeConnect` says so here: it is
+  the one source that is in no file, and a report that hid it would send its
+  reader hunting through configuration that does not mention it.
 - `identity` — your hex identity, derived from the token's claims or taken from
   the `identity` option. A derivation failure prints its reason here instead of
   aborting the command.
@@ -526,11 +560,12 @@ and one per log level: `SpacetimeLogPanic`, `SpacetimeLogError`,
 
 ## How auth resolves
 
-Which server, which database and which token a buffer means is decided by four
+Which server, which database and which token a buffer means is decided by five
 sources, consulted in one fixed order — highest first:
 
 ```
-setup() opts  >  environment  >  spacetime.local.json  >  spacetime.json  >  cli.toml
+:SpacetimeConnect  >  setup() opts  >  environment  >  spacetime.local.json  >
+spacetime.json  >  cli.toml
 ```
 
 The environment variables read are `SPACETIMEDB_HOST`, `SPACETIMEDB_PORT`,
@@ -539,6 +574,10 @@ no variable for TLS.
 
 **The address.** In order:
 
+0. A server selected with [`:SpacetimeConnect`](#spacetimeconnect) replaces the
+   address outright — it is an action rather than a setting, so it outranks
+   even an explicit `host`. It lasts the session, or until
+   `:SpacetimeConnect!`. Everything below describes what you get without one.
 1. An explicit `host` or `port` — from `setup()` or from `SPACETIMEDB_HOST` /
    `SPACETIMEDB_PORT` — or `tls = true` from `setup()` wins outright and
    suppresses `cli.toml` and the project files *entirely*, even when the values

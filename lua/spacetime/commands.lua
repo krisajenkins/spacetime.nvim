@@ -22,12 +22,12 @@
 -- error raised out of a completion function is printed under the user's cursor
 -- mid-keystroke, which is worse than completing nothing.
 --
--- **The not-implemented seam.** What is left of the command set's scaffolding is
--- `:SpacetimeConnect` and `:SpacetimeTables`. Those bodies call `todo()`, which notifies through
--- `spacetime.logger` — a message, never an error and never a stack trace. A
--- later task replaces exactly one `run` field in `M.COMMANDS` and deletes its
--- `todo` call; nothing else about the command (its name, `nargs`, `bang` or
--- completion) has to move.
+-- **Switching server is a session fact, not a configuration change.**
+-- `:SpacetimeConnect` writes nothing back into `require("spacetime").config` —
+-- `spacetime.config` holds the selection for the session and puts it at the top
+-- of the resolution chain, and `:SpacetimeConnect!` drops it again. What this
+-- file owns is the consequences: everything cached and everything in flight
+-- belongs to the server being left, so both go before the sidebar re-resolves.
 
 local M = {}
 
@@ -207,8 +207,8 @@ function M.complete_server(arg_lead)
 	return complete(cli_nicknames, arg_lead)
 end
 
----Complete a cached database name. For `:SpacetimeTables`, `:SpacetimeReducers`
----and `:SpacetimeLogs`.
+---Complete a cached database name. For `:SpacetimeReducers` and
+---`:SpacetimeLogs`.
 ---@param arg_lead string
 ---@return string[]
 function M.complete_database(arg_lead)
@@ -226,15 +226,89 @@ end
 -- Command bodies
 --------------------------------------------------------------------------------
 
----Report a command whose feature has not been built yet.
+---Everything a server switch invalidates, dropped in one place.
 ---
----A notification, deliberately: a user who types a real command name has done
----nothing wrong, so this must not look like a bug in their config. Every call
----site here disappears when its roadmap task lands.
----@param name string The command as the user typed it, colon included.
----@param task integer The ROADMAP.md task that will implement it.
-local function todo(name, task)
-	require("spacetime.logger").warn(("%s is not implemented yet (roadmap task %d)"):format(name, task))
+---The cache is cleared whole rather than key by key: every entry in it — the
+---database list, each schema, each page of rows — is an answer the *old* server
+---gave, and none of it is worth keeping against the chance that the new one
+---agrees. In-flight requests go the same way, and a log follow needs the extra
+---word `ui/sidebar.close()` documents: `cancel_all` kills its `curl`, but the
+---repeating flush timer is the log view's own and only its teardown closes it.
+local function drop_everything()
+	local state = require("spacetime.state")
+	state.cancel_all()
+	require("spacetime.ui.logs").teardown()
+	state.cache_clear()
+end
+
+---Print the server we are on and the ones `cli.toml` offers. `:SpacetimeConnect`
+---with no argument.
+---
+---`nvim_echo` with `history = true`, as |:SpacetimeStatus| does: command output
+---belongs in |:messages| where it can be read back, not in a notification a
+---plugin may collapse.
+local function report_servers()
+	local config = require("spacetime.config")
+
+	local connection, err = config.current(vim.api.nvim_get_current_buf())
+	local current = connection and ("%s (%s)"):format(connection.server or connection.host, connection.url)
+		or (err or "could not be resolved")
+
+	local lines = { "server:     " .. current }
+	if config.selected_server() then
+		lines[#lines + 1] = "selected:   " .. config.selected_server() .. " (:SpacetimeConnect! to undo)"
+	end
+
+	local nicknames = cli_nicknames()
+	lines[#lines + 1] = "available:  " .. (#nicknames > 0 and table.concat(nicknames, ", ") or "(none in cli.toml)")
+
+	vim.api.nvim_echo({ { table.concat(lines, "\n") } }, true, {})
+end
+
+---Switch to a `cli.toml` server nickname. What `:SpacetimeConnect [nick]` does.
+---
+---With no argument it reports rather than switches, because a command that
+---changes where you are pointed should need you to say where. The bang is the
+---undo: it drops the selection and goes back to whatever the configuration
+---resolves to, which is the only way back when the original address came from a
+---`host`/`port` rather than from a nickname you could retype.
+---@param arg string The command's one argument; empty when it was omitted.
+---@param bang boolean Forget the selection instead of making one.
+local function connect(arg, bang)
+	local logger = require("spacetime.logger")
+	local config = require("spacetime.config")
+
+	if bang then
+		if not config.clear_server() then
+			logger.info("no server has been selected with :SpacetimeConnect")
+			return
+		end
+		drop_everything()
+		require("spacetime.ui.sidebar").reconnect()
+		local connection = config.current(vim.api.nvim_get_current_buf())
+		logger.info(("back to the configured server: %s"):format(connection and connection.url or "unresolved"))
+		return
+	end
+
+	if arg == "" then
+		report_servers()
+		return
+	end
+
+	-- Resolved against the *current* buffer, before anything is torn down: which
+	-- database a nickname lands on still depends on the project config governing
+	-- the buffer the user ran this from, exactly as `:SpacetimeRows` does.
+	local connection, err = config.select_server(arg, vim.api.nvim_get_current_buf())
+	if not connection then
+		-- The selection is unchanged — `select_server` puts it back — so this is a
+		-- refusal, not a half-switch.
+		logger.error(err or ("could not switch to " .. arg))
+		return
+	end
+
+	drop_everything()
+	require("spacetime.ui.sidebar").reconnect()
+	logger.info(("connected to %s (%s)"):format(arg, connection.url))
 end
 
 ---The schema entry `table_name` names in `database`, from the cache only.
@@ -428,9 +502,6 @@ end
 ---@field complete? fun(arg_lead: string, cmd_line: string, cursor_pos: integer): string[]
 
 ---Every command the plugin defines, in the order the documentation lists them.
----
----A later task implements one of these by replacing its `run` field; the name,
----argument count and completion are already settled here.
 ---@type SpacetimeCommandSpec[]
 M.COMMANDS = {
 	{
@@ -451,11 +522,12 @@ M.COMMANDS = {
 	},
 	{
 		name = "SpacetimeConnect",
-		desc = "Switch to a cli.toml server nickname",
+		desc = "Switch to a cli.toml server nickname; with ! forget the switch",
 		nargs = "?",
+		bang = true,
 		complete = M.complete_server,
-		run = function()
-			todo(":SpacetimeConnect", 24)
+		run = function(cmd)
+			connect(cmd.args, cmd.bang == true)
 		end,
 	},
 	{
@@ -465,15 +537,6 @@ M.COMMANDS = {
 		-- cache dropped: asking for the list explicitly means asking for a fresh one.
 		run = function()
 			require("spacetime.ui.sidebar").open({ refresh = true })
-		end,
-	},
-	{
-		name = "SpacetimeTables",
-		desc = "List the tables of a database",
-		nargs = "?",
-		complete = M.complete_database,
-		run = function()
-			todo(":SpacetimeTables", 25)
 		end,
 	},
 	{

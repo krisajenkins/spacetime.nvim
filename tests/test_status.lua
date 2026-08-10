@@ -101,6 +101,33 @@ T["an unresolvable server nickname is reported, not raised"] = function()
 	expect.equality(#child.lua_get("require('spacetime.status').lines(0)"), #LABELS)
 end
 
+T["a server selected mid-session says so on the server line"] = function()
+	-- A `cli.toml` of our own, so there is a nickname to select. Written into the
+	-- `XDG_CONFIG_HOME` the hooks already point away from the developer's. The
+	-- `[==[` is load-bearing: the TOML below contains `]]`, which would close a
+	-- plain long bracket half way through the fixture.
+	child.lua([==[
+		local dir = vim.fn.tempname()
+		vim.fn.mkdir(dir .. '/spacetime', 'p')
+		vim.fn.writefile({
+			'[[server_configs]]',
+			'nickname = "testnet"',
+			'host = "testnet.spacetimedb.com"',
+			'protocol = "https"',
+		}, dir .. '/spacetime/cli.toml')
+		vim.env.XDG_CONFIG_HOME = dir
+		vim.env.SPACETIMEDB_HOST = nil
+
+		require('spacetime.config').select_server('testnet', 0)
+	]==])
+
+	local server = status():match("server:%s+([^\n]+)")
+	expect.equality(server:find("testnet.spacetimedb.com", 1, true) ~= nil, true)
+	-- Without this, the report names a server no file the reader can find
+	-- mentions.
+	expect.equality(server:find(":SpacetimeConnect", 1, true) ~= nil, true)
+end
+
 T["no project files means project: none"] = function()
 	-- The plugin's own repo has no spacetime.json, and the child starts in it.
 	expect.equality(status():match("project:%s+([^\n]+)"), "none")

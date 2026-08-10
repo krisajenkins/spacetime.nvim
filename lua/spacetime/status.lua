@@ -104,12 +104,21 @@ function M.fields(bufnr)
 		fields[#fields + 1] = { label = label, value = value, ok = ok ~= false }
 	end
 
-	local conn, err = require("spacetime.config").current(bufnr)
+	local config = require("spacetime.config")
+	local conn, err = config.current(bufnr)
 	if conn then
 		-- The nickname is what the user asked for; the host is the fallback when
 		-- they named an address by hand. TLS needs no line of its own — the URL's
 		-- scheme carries it, and the port is always explicit there.
-		add("server", ("%s (%s)"):format(conn.server or conn.host, conn.url))
+		local server = ("%s (%s)"):format(conn.server or conn.host, conn.url)
+		-- Said out loud, because it is the one source that is not in a file: a
+		-- report that showed `maincloud` without saying it was selected mid-session
+		-- would send whoever reads it looking through configuration that does not
+		-- mention it.
+		if config.selected_server() then
+			server = server .. " — selected with :SpacetimeConnect"
+		end
+		add("server", server)
 
 		local opts = require("spacetime").config --[[@as SpacetimeSetupOptions]]
 		local id, id_err = require("spacetime.lib.identity").resolve(conn.token, opts.identity)

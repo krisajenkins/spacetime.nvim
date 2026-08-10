@@ -31,10 +31,8 @@ The plugin talks to SpacetimeDB's HTTP API directly, over `curl`. It never
 shells out to the `spacetime` CLI in order to browse — it only ever reads that
 CLI's configuration file for your server list and your token.
 
-STATUS: EARLY. Two of the commands are still placeholders and say so when you
-run them: |:SpacetimeConnect| and |:SpacetimeTables|. Everything else
-described in this file is implemented. Browsing is read-only: there is no way
-to write a row or call a reducer from here yet.
+STATUS: EARLY. Everything described in this file is implemented. Browsing is
+read-only: there is no way to write a row or call a reducer from here yet.
 
 ==============================================================================
 2. REQUIREMENTS                                       *spacetime-requirements*
@@ -178,13 +176,12 @@ buffer.
 ==============================================================================
 5. COMMANDS                                               *spacetime-commands*
 
-The plugin defines eleven commands: >
+The plugin defines ten commands: >
 
     :Spacetime                  open the browser: layout plus database list
     :SpacetimeToggle            open the browser, or close it if it is open
-    :SpacetimeConnect [nick]    switch server by nickname   (placeholder)
+    :SpacetimeConnect[!] [nick] switch server by cli.toml nickname
     :SpacetimeDatabases         open the browser, refetch the database list
-    :SpacetimeTables [db]       list a database's tables    (placeholder)
     :SpacetimeRows {tbl}        browse the rows of [db.]tbl
     :SpacetimeSchema {tbl}      schema of [db.]tbl
     :SpacetimeReducers [db]     list a database's reducers
@@ -194,13 +191,10 @@ The plugin defines eleven commands: >
 <
 Every command is `bar`-safe, so it can be chained with `|`.
 
-                                                  *spacetime-placeholder-cmds*
-A command marked (placeholder) exists, accepts and completes its argument, and
-notifies you that it is not implemented yet. It never raises an error and it
-never changes anything: |:SpacetimeConnect| does not switch servers today, and
-|:SpacetimeTables| does not list anything. Use `setup({ server = ... })`,
-`SPACETIMEDB_SERVER` or a project file to choose a server, and the sidebar to
-see a database's tables.
+                                                     *spacetime-no-tables-cmd*
+There is no `:SpacetimeTables`. The sidebar IS the table list — with the
+access icons, and with the schema, the rows and the logs hanging off it — so
+a second way to see the same names would be a second thing to keep true.
 
 Where a command takes `[db.]tbl` the database may be left off: >
 
@@ -217,7 +211,6 @@ COMPLETION                                              *spacetime-completion*
 FROM WHAT THE PLUGIN HAS ALREADY FETCHED THIS SESSION. >
 
     :SpacetimeConnect           nicknames from your cli.toml
-    :SpacetimeTables            cached database names
     :SpacetimeReducers          cached database names
     :SpacetimeLogs              cached database names
     :SpacetimeRows              cached db.table
@@ -281,13 +274,45 @@ tokens in that file are never touched by completion.
 
                                                            *:SpacetimeConnect*
 :SpacetimeConnect [{nickname}]
-                                                            *:SpacetimeTables*
-:SpacetimeTables [{database}]
 
-    Placeholders — see |spacetime-placeholder-cmds|. Each command exists,
-    takes and completes its argument as documented above, and notifies you
-    that it is not implemented yet. Nothing they do can fail, because they do
-    not do anything yet.
+    Point the rest of the session at the `cli.toml` server called {nickname}.
+    The only way to change server without editing your configuration:
+    `setup({ server = ... })`, `SPACETIMEDB_SERVER` and the project file are
+    all read when a connection is resolved, and this sits above all three —
+    see |spacetime-auth|.
+
+    Above them because it is the one source that is an ACTION rather than a
+    setting: you typed it more recently than you wrote any of them. It
+    therefore beats an explicit `host`/`port` too, from |spacetime.setup()| or
+    from the environment; anything else would let a `SPACETIMEDB_HOST` in your
+    shell win and make the command look broken. What a nickname says nothing
+    about is left alone: the token, and the database your project file names.
+
+    With no argument it REPORTS rather than switches — the server you are on,
+    the nickname selected if there is one, and the nicknames `cli.toml`
+    offers. A nickname that is not in `cli.toml` is refused with the list of
+    the ones that are, and the selection does not change: a typo cannot
+    disconnect you.
+
+    A switch is a clean break. Everything in flight is cancelled, a log follow
+    is stopped, and the whole cache — the database list, every schema, every
+    page of rows — is dropped, because all of it is what the OLD server said.
+    An open layout re-resolves and refetches on the spot, and the content
+    window goes back to its placeholder rather than leaving another server's
+    rows on screen. Expanded databases stay expanded: that is your arrangement
+    of the tree, not anything a server told us.
+
+                                                          *:SpacetimeConnect!*
+:SpacetimeConnect!
+
+    Forget the selection and go back to whatever the configuration resolves
+    to, invalidating exactly what a switch does. This is the only way back
+    when the address you started from came from a `host`/`port` rather than a
+    nickname you could retype. With nothing selected it says so and does
+    nothing.
+
+    |:SpacetimeStatus| marks a selected server, so a report pasted into a bug
+    never names a server that appears in none of your files.
 
                                                               *:SpacetimeRows*
 :SpacetimeRows {[database.]table}
@@ -425,7 +450,10 @@ tokens in that file are never touched by completion.
     server ~
         The nickname you asked for, or the hostname if you named one by hand,
         followed by the resolved base URL. The URL carries both the scheme
-        (so `https` means TLS) and an explicit port.
+        (so `https` means TLS) and an explicit port. A server chosen with
+        |:SpacetimeConnect| says so here: it is the one source that is in no
+        file, and a report that hid it would send its reader hunting through
+        configuration that does not mention it.
 
     identity ~
         Your hex identity: taken from |spacetime-opt-identity| if you set it,
@@ -915,15 +943,20 @@ any of them without patching the plugin. >
 ==============================================================================
 8. HOW AUTH RESOLVES                                          *spacetime-auth*
 
-Which server, which database and which token a buffer means is decided by four
+Which server, which database and which token a buffer means is decided by five
 sources, consulted in one fixed order — highest first: >
 
-    setup() opts
-      > environment
-        > spacetime.local.json
-          > spacetime.json
-            > cli.toml
+    :SpacetimeConnect
+      > setup() opts
+        > environment
+          > spacetime.local.json
+            > spacetime.json
+              > cli.toml
 <
+Only the first of those is an ACTION rather than a configuration, which is why
+it sits on top — see |:SpacetimeConnect|. It lasts the session, or until
+|:SpacetimeConnect!|; everything below describes what you get without one.
+
                                                           *spacetime-auth-env*
 The environment variables read are `SPACETIMEDB_HOST`, `SPACETIMEDB_PORT`,
 `SPACETIMEDB_SERVER`, `SPACETIMEDB_DATABASE` and `SPACETIMEDB_TOKEN`. There is
@@ -934,6 +967,8 @@ there must not stop the plugin working.
                                                       *spacetime-auth-address*
 THE ADDRESS, in order:
 
+0. A server selected with |:SpacetimeConnect| replaces the address outright,
+   including an explicit `host` from either of the two sources below it.
 1. An explicit `host` or `port` — from |spacetime.setup()| or from
    `SPACETIMEDB_HOST` / `SPACETIMEDB_PORT` — or `tls = true` from
    |spacetime.setup()| wins outright and suppresses `cli.toml` and the project

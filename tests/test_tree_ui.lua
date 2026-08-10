@@ -928,6 +928,70 @@ end
 -- Cancellation
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+-- Switching server
+--------------------------------------------------------------------------------
+
+---Give the child a `cli.toml` with one selectable nickname, in the temporary
+---`XDG_CONFIG_HOME` the hooks already point it at. The `[==[` is load-bearing:
+---the TOML contains `]]`, which would close a plain long bracket early.
+local function serve_cli_toml()
+	child.lua([==[
+		local dir = vim.env.XDG_CONFIG_HOME
+		vim.fn.mkdir(dir .. '/spacetime', 'p')
+		vim.fn.writefile({
+			'[[server_configs]]',
+			'nickname = "testnet"',
+			'host = "testnet.example.com"',
+			'protocol = "https"',
+		}, dir .. '/spacetime/cli.toml')
+	]==])
+end
+
+T[":SpacetimeConnect refetches an open layout against the new server"] = function()
+	serve_cli_toml()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	-- Everything so far went to the default, which is not where we are going.
+	expect.equality(child.lua_get([[REQUESTS[1] ]]):find("testnet", 1, true), nil)
+
+	child.lua([[ REQUESTS = {} ]])
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+
+	-- The list is asked for again, and asked of the server just selected.
+	expect.equality(#child.lua_get([[REQUESTS]]) > 0, true)
+	expect.equality(child.lua_get([[REQUESTS[1] ]]):find("https://testnet.example.com:443", 1, true), 1)
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▸ spacetutorial" })
+end
+
+T["switching server puts the content window back to the placeholder"] = function()
+	serve_cli_toml()
+	serve_schema(TWO_TABLES)
+	child.lua([[ vim.cmd('Spacetime') ]])
+	-- Something of the old server's on screen: a table's schema.
+	child.type_keys("<CR>", "jj", "s")
+	expect.equality(content_lines()[1], "widget")
+
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+
+	-- Left alone it would sit there looking like the new server's answer.
+	expect.equality(content_lines(), child.lua_get([[S.PLACEHOLDER]]))
+end
+
+T["a refused switch leaves the layout on the server it was on"] = function()
+	serve_cli_toml()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	local before = sidebar_lines()
+
+	child.lua([[ REQUESTS = {} ]])
+	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeConnect nosuchserver') end) ]])
+
+	-- Nothing refetched, nothing repainted, nothing dropped: a refusal is not a
+	-- half-switch.
+	expect.equality(child.lua_get([[REQUESTS]]), {})
+	expect.equality(sidebar_lines(), before)
+	expect.equality(child.lua_get([[#NOTIFIED]]), 1)
+end
+
 T["a second :Spacetime cancels the first fetch"] = function()
 	child.lua([[ RESPONDER = function() return nil end ]])
 

@@ -1,9 +1,14 @@
 -- Which server, database and token does a given buffer mean?
 --
--- Four sources answer that, and the whole point of this module is that they are
+-- Five sources answer that, and the whole point of this module is that they are
 -- consulted in one fixed order (highest first):
 --
---     setup() opts > env > spacetime.local.json > spacetime.json > cli.toml
+--     :SpacetimeConnect > setup() opts > env > spacetime.local.json >
+--     spacetime.json > cli.toml
+--
+-- Only the first of those is an *action* rather than a configuration, which is
+-- why it sits on top: a user who typed `:SpacetimeConnect maincloud` a moment
+-- ago has said something more recent than any file did. See `select_server`.
 --
 -- The two halves are deliberately separated. `resolve()` is **pure** — options,
 -- environment, project config and cli.toml in, a connection out — so every
@@ -461,6 +466,52 @@ function M.sidebar_columns(width, total)
 	return math.max(math.min(columns, total - 1), M.MIN_SIDEBAR_WIDTH)
 end
 
+--------------------------------------------------------------------------------
+-- The session's own choice of server
+--------------------------------------------------------------------------------
+
+-- The nickname `:SpacetimeConnect` selected, for the rest of the session.
+--
+-- Not stored in `require("spacetime").config` with the rest: that table is what
+-- `setup()` was given, and a command must not rewrite the user's configuration
+-- behind their back. This is a session fact, and it dies with the session.
+local session_server = nil ---@type string|nil
+
+---The nickname |:SpacetimeConnect| selected, or `nil` when none has been.
+---@return string|nil
+function M.selected_server()
+	return session_server
+end
+
+---Fold the session's choice into the sources `resolve` reads.
+---
+---A named server has to beat *every* address source, `setup()` and the
+---environment alike — point 1 of `resolve` gives an explicit `host`/`port`/`tls`
+---outright victory, so leaving either in place would let a `SPACETIMEDB_HOST` in
+---the user's shell silently win and make the command look broken. What survives
+---is what a nickname says nothing about: the database and the token.
+---
+---The project config is passed through untouched, because its `server` loses to
+---`opts.server` in `resolve` already, while its `database` is still the right
+---answer to "which database does this repository mean".
+---@param opts SpacetimeConnectionOpts
+---@param env table
+---@return SpacetimeConnectionOpts opts
+---@return table env
+local function with_session_server(opts, env)
+	if session_server == nil then
+		return opts, env
+	end
+	return {
+		server = session_server,
+		database = opts.database,
+		token = opts.token,
+	}, {
+		SPACETIMEDB_DATABASE = env.SPACETIMEDB_DATABASE,
+		SPACETIMEDB_TOKEN = env.SPACETIMEDB_TOKEN,
+	}
+end
+
 ---The connection for `bufnr`: `resolve()` fed from the real environment, the
 ---buffer's project config and the user's `cli.toml`.
 ---@param bufnr? integer Defaults to the current buffer.
@@ -470,7 +521,43 @@ function M.current(bufnr)
 	local path = M.cli_config_path(vim.env)
 	local cli_cfg = path and require("spacetime.lib.clitoml").read(path) or { server_configs = {} }
 	local opts = require("spacetime").config --[[@as SpacetimeConnectionOpts]]
-	return M.resolve(opts, vim.env, M.project_config(bufnr), cli_cfg)
+	-- Bound to locals rather than passed inline: a multi-return expands only in
+	-- the last argument position, and these are the first two of four.
+	local session_opts, session_env = with_session_server(opts, vim.env)
+	return M.resolve(session_opts, session_env, M.project_config(bufnr), cli_cfg)
+end
+
+---Select `nickname` for the rest of the session. What |:SpacetimeConnect| does.
+---
+---Validated by trying it: the nickname is applied, the connection re-resolved,
+---and the previous selection put back if that failed. Two things fall out of
+---doing it that way rather than by looking the nickname up here. The message is
+---`resolve`'s own, so an unknown nickname is reported in one wording with one
+---list of the nicknames that do exist, wherever the complaint comes from — and a
+---typo can never disconnect you, because the selection only changes when the new
+---one resolves.
+---@param nickname string A `cli.toml` `[[server_configs]]` nickname.
+---@param bufnr? integer Buffer whose project config the check resolves against.
+---@return SpacetimeConnection|nil connection
+---@return string|nil err
+function M.select_server(nickname, bufnr)
+	local previous = session_server
+	session_server = nickname
+
+	local connection, err = M.current(bufnr)
+	if not connection then
+		session_server = previous
+	end
+	return connection, err
+end
+
+---Forget the session's choice, back to what the configuration resolves to.
+---What |:SpacetimeConnect!| does.
+---@return boolean cleared `false` when nothing was selected in the first place.
+function M.clear_server()
+	local had = session_server ~= nil
+	session_server = nil
+	return had
 end
 
 return M

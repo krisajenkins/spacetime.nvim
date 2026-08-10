@@ -1,5 +1,6 @@
 :Spacetime	spacetime.txt	/*:Spacetime*
 :SpacetimeConnect	spacetime.txt	/*:SpacetimeConnect*
+:SpacetimeConnect!	spacetime.txt	/*:SpacetimeConnect!*
 :SpacetimeDatabases	spacetime.txt	/*:SpacetimeDatabases*
 :SpacetimeLogs	spacetime.txt	/*:SpacetimeLogs*
 :SpacetimeLogsStop	spacetime.txt	/*:SpacetimeLogsStop*
@@ -7,7 +8,6 @@
 :SpacetimeRows	spacetime.txt	/*:SpacetimeRows*
 :SpacetimeSchema	spacetime.txt	/*:SpacetimeSchema*
 :SpacetimeStatus	spacetime.txt	/*:SpacetimeStatus*
-:SpacetimeTables	spacetime.txt	/*:SpacetimeTables*
 :SpacetimeToggle	spacetime.txt	/*:SpacetimeToggle*
 :checkhealth-spacetime	spacetime.txt	/*:checkhealth-spacetime*
 spacetime	spacetime.txt	/*spacetime*
@@ -44,6 +44,7 @@ spacetime-keys-schema	spacetime.txt	/*spacetime-keys-schema*
 spacetime-keys-shared	spacetime.txt	/*spacetime-keys-shared*
 spacetime-keys-sidebar	spacetime.txt	/*spacetime-keys-sidebar*
 spacetime-logs-follow	spacetime.txt	/*spacetime-logs-follow*
+spacetime-no-tables-cmd	spacetime.txt	/*spacetime-no-tables-cmd*
 spacetime-nowrap	spacetime.txt	/*spacetime-nowrap*
 spacetime-opt-connection	spacetime.txt	/*spacetime-opt-connection*
 spacetime-opt-icons	spacetime.txt	/*spacetime-opt-icons*
@@ -52,7 +53,6 @@ spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
 spacetime-opt-log_lines	spacetime.txt	/*spacetime-opt-log_lines*
 spacetime-opt-side	spacetime.txt	/*spacetime-opt-side*
 spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
-spacetime-placeholder-cmds	spacetime.txt	/*spacetime-placeholder-cmds*
 spacetime-project-files	spacetime.txt	/*spacetime-project-files*
 spacetime-quickstart	spacetime.txt	/*spacetime-quickstart*
 spacetime-reducers-private	spacetime.txt	/*spacetime-reducers-private*

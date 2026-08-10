@@ -27,13 +27,12 @@
 local child, new_set = require("tests.helpers.child")()
 local expect = MiniTest.expect
 
--- The eleven commands, in the order `:h spacetime-commands` documents them.
+-- The ten commands, in the order `:h spacetime-commands` documents them.
 local COMMANDS = {
 	"Spacetime",
 	"SpacetimeToggle",
 	"SpacetimeConnect",
 	"SpacetimeDatabases",
-	"SpacetimeTables",
 	"SpacetimeRows",
 	"SpacetimeSchema",
 	"SpacetimeReducers",
@@ -143,7 +142,6 @@ T["arguments are optional, required or forbidden per command"] = function()
 	expect.equality(defined.SpacetimeToggle.nargs, "0")
 	expect.equality(defined.SpacetimeConnect.nargs, "?")
 	expect.equality(defined.SpacetimeDatabases.nargs, "0")
-	expect.equality(defined.SpacetimeTables.nargs, "?")
 	expect.equality(defined.SpacetimeRows.nargs, "1")
 	expect.equality(defined.SpacetimeSchema.nargs, "1")
 	expect.equality(defined.SpacetimeReducers.nargs, "?")
@@ -152,10 +150,11 @@ T["arguments are optional, required or forbidden per command"] = function()
 	expect.equality(defined.SpacetimeStatus.nargs, "0")
 end
 
-T["only :SpacetimeLogs takes a bang"] = function()
+T["only :SpacetimeLogs and :SpacetimeConnect take a bang"] = function()
 	local defined = defined_commands()
+	local bangs = { SpacetimeLogs = true, SpacetimeConnect = true }
 	for _, name in ipairs(COMMANDS) do
-		expect.equality({ name, defined[name].bang }, { name, name == "SpacetimeLogs" })
+		expect.equality({ name, defined[name].bang }, { name, bangs[name] == true })
 	end
 end
 
@@ -163,7 +162,6 @@ T["exactly the commands that take a name have completion"] = function()
 	local defined = defined_commands()
 	local completes = {
 		SpacetimeConnect = true,
-		SpacetimeTables = true,
 		SpacetimeRows = true,
 		SpacetimeSchema = true,
 		SpacetimeReducers = true,
@@ -178,39 +176,105 @@ end
 -- Bodies
 --------------------------------------------------------------------------------
 
-T["an unimplemented command notifies rather than raising"] = function()
-	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeTables') end) ]])
+-- `:SpacetimeConnect` cases. The layout is never opened here, which makes
+-- `sidebar.reconnect()` a no-op and keeps every one of these off the transport:
+-- what is under test is the selection and what it invalidates, not the refetch
+-- that follows. The environment is cleared first because a developer shell with
+-- a `SPACETIMEDB_HOST` in it would otherwise resolve somewhere else entirely.
+local function clear_env()
+	child.lua([[
+		for _, name in ipairs({ 'HOST', 'PORT', 'SERVER', 'DATABASE', 'TOKEN' }) do
+			vim.env['SPACETIMEDB_' .. name] = nil
+		end
+		CONFIG = require('spacetime.config')
+	]])
+end
+
+T[":SpacetimeConnect with no argument reports rather than switching"] = function()
+	clear_env()
+
+	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeConnect') end) ]])
+
+	-- Reporting is `nvim_echo`, not a notification, and it selects nothing.
+	expect.equality(#child.lua_get("NOTIFIED"), 0)
+	expect.equality(child.lua_get([[CONFIG.selected_server()]]), vim.NIL)
+
+	local messages = child.lua_get([[vim.fn.execute('messages')]])
+	expect.equality(messages:find("testnet", 1, true) ~= nil, true)
+	expect.equality(messages:find("local", 1, true) ~= nil, true)
+end
+
+T[":SpacetimeConnect switches to a cli.toml nickname"] = function()
+	clear_env()
+
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+
+	expect.equality(child.lua_get([[CONFIG.selected_server()]]), "testnet")
+	expect.equality(child.lua_get([[select(1, CONFIG.current(0)).url]]), "https://testnet.spacetimedb.com:443")
 
 	local notified = child.lua_get("NOTIFIED")
 	expect.equality(#notified, 1)
-	expect.equality(notified[1]:find("SpacetimeTables", 1, true) ~= nil, true)
-	expect.equality(notified[1]:find("not implemented yet", 1, true) ~= nil, true)
+	expect.equality(notified[1]:find("testnet", 1, true) ~= nil, true)
 end
 
-T["every unimplemented command notifies once, and none of them raise"] = function()
-	-- The browser commands (`:Spacetime`, `:SpacetimeToggle`,
-	-- `:SpacetimeDatabases`) are excluded because they really do something — see
-	-- tests/test_tree_ui.lua — as are `:SpacetimeRows` and `:SpacetimeSchema`,
-	-- which open the browser on a table (tests/test_rows_ui.lua and
-	-- tests/test_schema_ui.lua), and `:SpacetimeReducers`, which opens it on a
-	-- database (tests/test_reducers_ui.lua). `:SpacetimeStatus` has a file of its
-	-- own.
-	child.lua(
-		[[
-		for _, command in ipairs(...) do
-			expect.no_error(function() vim.cmd(command) end)
-		end
-	]],
-		{
-			{
-				"SpacetimeConnect",
-				"SpacetimeConnect testnet",
-				"SpacetimeTables spacegym",
-			},
-		}
-	)
+T["a nickname cli.toml does not have is refused, and changes nothing"] = function()
+	clear_env()
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+	child.lua([[ NOTIFIED = {} ]])
 
-	expect.equality(#child.lua_get("NOTIFIED"), 3)
+	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeConnect nosuchserver') end) ]])
+
+	-- Still on the server that did resolve: a typo must not disconnect you.
+	expect.equality(child.lua_get([[CONFIG.selected_server()]]), "testnet")
+
+	local notified = child.lua_get("NOTIFIED")
+	expect.equality(#notified, 1)
+	-- `resolve`'s own message, so the complaint lists what there is instead.
+	expect.equality(notified[1]:find("nosuchserver", 1, true) ~= nil, true)
+	expect.equality(notified[1]:find("testnet", 1, true) ~= nil, true)
+end
+
+T["the selected server beats an address in the environment"] = function()
+	clear_env()
+	-- An explicit host normally wins outright, cli.toml and all. The whole point
+	-- of the command is that it is more recent than the environment is.
+	child.lua([[ vim.env.SPACETIMEDB_HOST = 'elsewhere.example.com' ]])
+
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+
+	expect.equality(child.lua_get([[select(1, CONFIG.current(0)).url]]), "https://testnet.spacetimedb.com:443")
+end
+
+T["switching servers drops everything the old one told us"] = function()
+	clear_env()
+	seed_cache()
+
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.cache)]]), 0)
+end
+
+T[":SpacetimeConnect! goes back to the configured server"] = function()
+	clear_env()
+	child.lua([[ vim.cmd('SpacetimeConnect testnet') ]])
+	child.lua([[ NOTIFIED = {} ]])
+
+	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeConnect!') end) ]])
+
+	expect.equality(child.lua_get([[CONFIG.selected_server()]]), vim.NIL)
+	-- `default_server = "local"` in the fixture cli.toml.
+	expect.equality(child.lua_get([[select(1, CONFIG.current(0)).url]]), "http://127.0.0.1:3000")
+	expect.equality(#child.lua_get("NOTIFIED"), 1)
+end
+
+T[":SpacetimeConnect! with nothing selected says so and does nothing"] = function()
+	clear_env()
+
+	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeConnect!') end) ]])
+
+	local notified = child.lua_get("NOTIFIED")
+	expect.equality(#notified, 1)
+	expect.equality(notified[1]:find("no server has been selected", 1, true) ~= nil, true)
 end
 
 -- The static log view is tests/test_logs_ui.lua's business and following is
@@ -308,7 +372,6 @@ T["completion is wired to the commands themselves"] = function()
 	seed_cache()
 
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeConnect loc', 'cmdline')]]), { "local" })
-	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeTables spacet', 'cmdline')]]), { "spacetutorial" })
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeLogs arch', 'cmdline')]]), { "archive" })
 	-- A database, not a table: the reducers belong to the module.
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeReducers spacet', 'cmdline')]]), { "spacetutorial" })
@@ -329,7 +392,7 @@ T["an empty cache completes to an empty list rather than erroring"] = function()
 		expect.no_error(function()
 			expect.equality(C.complete_database(''), {})
 			expect.equality(C.complete_table(''), {})
-			expect.equality(vim.fn.getcompletion('SpacetimeTables ', 'cmdline'), {})
+			expect.equality(vim.fn.getcompletion('SpacetimeLogs ', 'cmdline'), {})
 		end)
 	]])
 end
@@ -375,7 +438,7 @@ T["completion never fires a request"] = function()
 
 	for _, line in ipairs({
 		"SpacetimeConnect ",
-		"SpacetimeTables ",
+		"SpacetimeReducers ",
 		"SpacetimeLogs ",
 		"SpacetimeRows ",
 		"SpacetimeSchema spacegym.",
@@ -385,7 +448,7 @@ T["completion never fires a request"] = function()
 
 	expect.equality(child.lua_get("#REQUESTED"), 0)
 	-- And completion really did run: it produced candidates from the cache.
-	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeTables ', 'cmdline')]]), {
+	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeLogs ', 'cmdline')]]), {
 		"archive",
 		"spacegym",
 		"spacetutorial",

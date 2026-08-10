@@ -596,6 +596,23 @@ be one commit.
 36. **Update `CLAUDE.md`** — the Layout section, and "integrates the SpacetimeDB
     CLI" becomes "talks to SpacetimeDB's HTTP API directly".
 
+### Settled after the build phases
+
+- **`:SpacetimeConnect` selects a server for the session**, above `setup()` opts at the
+  top of the resolution chain, and `:SpacetimeConnect!` drops the selection again. It has
+  to outrank an explicit `host`/`port` — from `setup()` *or* the environment — or a
+  `SPACETIMEDB_HOST` in the user's shell would take point 1 of `resolve` and the command
+  would appear to do nothing. It is the one source that is an action rather than a
+  configuration, which is both why it wins and why `:SpacetimeStatus` marks it: a report
+  naming a server that appears in none of the user's files is a report that misleads.
+  A switch drops the whole cache rather than any part of it — every entry is an answer
+  the old server gave.
+- **`:SpacetimeTables` was removed rather than implemented** (task 22 had listed it). The
+  sidebar *is* the table list: it groups tables, views and system tables, marks each one's
+  access, and hangs the schema, the rows and the logs off it. A second view over the same
+  names would duplicate `ui/tree.lua`'s grouping and access rules in a second place and
+  give the user nothing they did not already have one keystroke away.
+
 ### Deferred past v1
 
 - SQL scratch buffer (`buftype=acwrite` + `BufWriteCmd`, `:w` to execute) — the

@@ -94,6 +94,10 @@ local focus_project = false ---@type boolean
 -- put it back rather than leaving a `spacetime://content` scratch behind.
 local displaced = nil ---@type integer|nil
 
+---The name the placeholder claims the content buffer under, so a view that
+---painted before a reconnect cannot repaint over it afterwards.
+M.PLACEHOLDER_OWNER = "placeholder"
+
 ---What the content window says until something is selected.
 M.PLACEHOLDER = {
 	"spacetime.nvim",
@@ -538,6 +542,51 @@ function M.open(opts)
 	end
 
 	return sidebar_win, content_win
+end
+
+---Re-resolve the connection and start again. What |:SpacetimeConnect| does once
+---the switch itself has been accepted.
+---
+---A no-op when the layout is not open: there is nothing on screen to be stale,
+---and the next `:Spacetime` resolves from scratch anyway.
+---
+---The re-resolution reads the buffer the content window displaced — the user's
+---own, whose project config governed the first resolution — rather than whatever
+---is current now, which is usually one of our own scratch buffers. That is point
+---1 of the module header, one step removed: the rule outlives the moment the
+---layout opened.
+---
+---The caller is expected to have dropped the cache and cancelled what was in
+---flight, both of which belong to the server being left behind. What this adds is
+---the state that is *not* in `state.lua`: what the old server said about each
+---database, and whatever the content window was showing.
+function M.reconnect()
+	if not M.is_open() then
+		return
+	end
+
+	local bufnr = (type(displaced) == "number" and vim.api.nvim_buf_is_valid(displaced)) and displaced or 0
+	connection, connection_error = require("spacetime.config").current(bufnr)
+	project_database = connection and connection.database or nil
+
+	-- A pause and a failed schema are facts about the old server, and holding on
+	-- to them would stop the new one being asked at all. Expansion is kept: it is
+	-- the user's arrangement of the tree rather than anything a server said, and a
+	-- database the new server also has is refetched by `fetch_expanded_schemas`.
+	schema_results = {}
+
+	-- Whatever the content window is showing came from the old server, so it goes
+	-- back to the placeholder rather than sitting there looking current.
+	local buffer = require("spacetime.ui.buffer")
+	local content = buffer.find(buffer.CONTENT_NAME)
+	if content and vim.api.nvim_buf_is_valid(content) then
+		buffer.claim_content(M.PLACEHOLDER_OWNER)
+		local keys = require("spacetime.ui.keys")
+		buffer.set_lines(content, M.PLACEHOLDER)
+		keys.apply(content, { keys.CLOSE })
+	end
+
+	fetch()
 end
 
 ---Refetch the database list, cache and all. What `r` does.
