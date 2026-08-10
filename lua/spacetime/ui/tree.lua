@@ -19,9 +19,10 @@
 --    one line per node is the invariant every index here depends on, the same
 --    reason `grid.sanitise` exists.
 -- 2. **Spans are 0-based byte offsets**, ready for `nvim_buf_set_extmark`
---    without conversion. The marker column is a 3-byte arrow plus a space, so a
---    character-based offset would put every database name four columns left of
---    where it is.
+--    without conversion. The marker column is a 3-byte arrow plus a space, and
+--    the access icon a 4-byte emoji plus a space, so a character-based offset
+--    would put every database name four columns left of where it is and every
+--    table name seven.
 -- 3. **The module holds no state.** Expansion is passed in per database as
 --    `expanded`, and the caller supplies the database order. Two calls with the
 --    same model produce the same render.
@@ -43,12 +44,13 @@
 ---@field databases? SpacetimeTreeDatabase[] In the order given — the caller sorts.
 ---@field status? "idle"|"loading"|"error" Status of the database *list* itself.
 ---@field error? string Message to render when `status == "error"`.
+---@field icons? "emoji"|"ascii"|"none" Which `M.ICONS` set to prefix names with. Default `"emoji"`.
 
 ---What one rendered line means. `kind` says which of the optional fields are set.
 ---@class SpacetimeTreeNode
 ---@field kind "database"|"table"|"view"|"system_table"|"message"
 ---@field line integer 1-based index into `lines`, so a node round-trips both ways.
----@field label string The rendered text, marker and indent excluded.
+---@field label string The rendered text, marker, indent and access icon excluded.
 ---@field database? string `db.name`; set on every node inside a database, `nil` on top-level messages.
 ---@field db? SpacetimeTreeDatabase The input entry itself, by reference.
 ---@field name? string Display name of a table or view (`entry.name`).
@@ -82,6 +84,28 @@ M.MARKERS = {
 ---`"▸ "` marker column, so labels line up under the database name.
 M.INDENT = "    "
 
+---The access icons, keyed by the mode `model.icons` names. Every table and view
+---is prefixed with one, so "can anyone read this?" is answerable at a glance
+---rather than by opening the schema view.
+---
+---`emoji` is the default, and the pair is chosen to be one width class: both
+---glyphs are four bytes and both are `Emoji_Presentation` (East Asian Wide), so
+---a terminal that draws emoji narrow draws *both* narrow and the label column
+---shifts as a whole rather than going ragged. That is the whole of the
+---mitigation — `strdisplaywidth` for emoji depends on `'ambiwidth'` and on the
+---terminal's own tables, which ROADMAP.md's risk list says to document rather
+---than chase. `ascii` is the bare-TTY fallback (one byte, one column, same
+---property) and `none` renders no icon column at all.
+---@type table<string, table<string, string>>
+M.ICONS = {
+	emoji = { public = "🌎", private = "🔒" },
+	ascii = { public = "+", private = "-" },
+	none = {},
+}
+
+---The `M.ICONS` set used when the model names none.
+M.DEFAULT_ICONS = "emoji"
+
 local LOADING = "loading…"
 local NO_DATABASES = "(no databases)"
 local NO_TABLES = "(no tables)"
@@ -114,6 +138,26 @@ local function one_line(value, fallback)
 	return out
 end
 
+---Is this schema entry readable by anyone?
+---
+---The two halves of the model spell it differently and neither is re-derived
+---from anything else: a view carries an `is_public` boolean, a table (system
+---tables included — they have an access like any other, and giving them one
+---keeps the label column straight) carries the raw `"Public"`/`"Private"` tag.
+---Which to read is decided by the list the entry came out of rather than by
+---`entry.is_view`, so a half-built model cannot make a public view read as a
+---private table. Anything unrecognised counts as private, which is the safe way
+---to be wrong.
+---@param kind string The node kind, as `children` classified it.
+---@param entry SpacetimeSchemaTable|SpacetimeSchemaView|table
+---@return boolean
+local function is_public(kind, entry)
+	if kind == "view" then
+		return entry.is_public == true
+	end
+	return entry.access == "Public"
+end
+
 ---Lay the sidebar tree out.
 ---
 ---Raises on a non-table model: everything below that point is tolerant — a
@@ -130,6 +174,11 @@ function M.build_lines(model)
 	local lines = {} ---@type string[]
 	local nodes = {} ---@type SpacetimeTreeNode[]
 	local spans = {} ---@type SpacetimeTreeSpan[]
+
+	-- An unknown mode falls back to the default rather than raising: this is a
+	-- cosmetic setting, and `setup()` has already refused anything it does not
+	-- know about.
+	local icons = M.ICONS[model.icons] or M.ICONS[M.DEFAULT_ICONS]
 
 	---Append one line and the node that owns it, filling in `node.line`.
 	---@param text string
@@ -209,7 +258,12 @@ function M.build_lines(model)
 			-- Display the source spelling the developer wrote; carry the canonical
 			-- name on the node, because that is what the SQL layer queries.
 			local label = one_line(entry.name, one_line(entry.canonical, ""))
-			local index = emit(M.INDENT .. label, {
+			-- The icon is decoration, not part of the name: it is prefixed onto the
+			-- line but kept out of `label` and out of the highlighted span, so `y`
+			-- still yanks something you can paste into SQL.
+			local icon = icons[is_public(item.kind, entry) and "public" or "private"]
+			local indent = icon ~= nil and (M.INDENT .. icon .. " ") or M.INDENT
+			local index = emit(indent .. label, {
 				kind = item.kind,
 				label = label,
 				database = type(db.name) == "string" and db.name or nil,
@@ -218,7 +272,7 @@ function M.build_lines(model)
 				canonical = entry.canonical,
 				entry = entry,
 			})
-			span(index, #M.INDENT, #M.INDENT + #label, item.hl)
+			span(index, #indent, #indent + #label, item.hl)
 		end
 	end
 

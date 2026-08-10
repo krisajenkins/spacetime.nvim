@@ -24,6 +24,8 @@ local COLLAPSED = "▸"
 local EXPANDED = "▾"
 local PAUSED = "⏸"
 local INDENT = "    "
+local PRIVATE = "🔒"
+local PUBLIC = "🌎"
 
 ---@return SpacetimeSchema
 local function fixture_schema()
@@ -54,6 +56,54 @@ local function with_system_table(model)
 		return a.canonical < b.canonical
 	end)
 	return model
+end
+
+---Add one public table to a parsed schema, since every table in both live
+---fixtures is `Private` and the icon has two states to prove.
+---@param model SpacetimeSchema
+---@return SpacetimeSchema
+local function with_public_table(model)
+	model.tables[#model.tables + 1] = {
+		name = "leaderboard",
+		canonical = "leaderboard",
+		product_type_ref = nil,
+		columns = {},
+		primary_key = {},
+		table_type = "User",
+		access = "Public",
+		is_event = false,
+		is_system = false,
+		is_view = false,
+		indexes = {},
+		constraints = {},
+		schedule = nil,
+	}
+	table.sort(model.tables, function(a, b)
+		return a.canonical < b.canonical
+	end)
+	return model
+end
+
+---The icon a node must be prefixed with, derived from the *model* rather than
+---read back off the rendered line: a table's raw access tag, a view's boolean.
+---@param node SpacetimeTreeNode
+---@return string
+local function want_icon(node)
+	local entry = node.entry
+	local public
+	if node.kind == "view" then
+		public = entry.is_public == true
+	else
+		public = entry.access == "Public"
+	end
+	return public and PUBLIC or PRIVATE
+end
+
+---The full indent a table or view line carries: four spaces, its icon, a space.
+---@param node SpacetimeTreeNode
+---@return string
+local function want_indent(node)
+	return INDENT .. want_icon(node) .. " "
 end
 
 ---The invariants that must hold of every render, whatever the model.
@@ -120,7 +170,7 @@ T["an expanded database renders one child per table and view"] = function()
 
 	for _, node in ipairs(child_nodes(render)) do
 		expect.equality(render.lines[node.line]:sub(1, #INDENT), INDENT)
-		expect.equality(render.lines[node.line], INDENT .. node.label)
+		expect.equality(render.lines[node.line], want_indent(node) .. node.label)
 		expect.equality(node.label, node.name)
 		expect.equality(node.database, "spacegym")
 		expect.no_equality(node.canonical, nil)
@@ -202,6 +252,125 @@ T["each group keeps the schema's canonical order"] = function()
 	expect.no_equality(previous["system_table"], nil)
 end
 
+T["a table's icon comes from its access and a view's from is_public"] = function()
+	local schema = with_public_table(with_system_table(fixture_schema()))
+	local render = tree.build_lines({ databases = { { name = "spacegym", expanded = true, schema = schema } } })
+	check_invariants(render)
+
+	local seen = {}
+	for _, node in ipairs(child_nodes(render)) do
+		local line = render.lines[node.line]
+		expect.equality(line:sub(1, #INDENT), INDENT)
+		expect.equality(line, want_indent(node) .. node.label)
+		seen[line:sub(#INDENT + 1, #INDENT + #want_icon(node))] = true
+	end
+	-- Both icons really did appear: the live module's tables are all `Private`,
+	-- its four views are all `is_public`, and `leaderboard` is a `Public` table.
+	expect.equality(seen, { [PRIVATE] = true, [PUBLIC] = true })
+
+	---@param name string
+	---@return SpacetimeTreeNode
+	local function node_named(name)
+		for _, node in ipairs(child_nodes(render)) do
+			if node.label == name then
+				return node
+			end
+		end
+		error("no node labelled " .. name)
+	end
+
+	expect.equality(render.lines[node_named("ledgerEntry").line], INDENT .. PRIVATE .. " ledgerEntry")
+	expect.equality(render.lines[node_named("leaderboard").line], INDENT .. PUBLIC .. " leaderboard")
+	expect.equality(render.lines[node_named("meView").line], INDENT .. PUBLIC .. " meView")
+	-- System tables carry an access like any other table, and are iconed from it:
+	-- leaving them bare would put their names three columns left of everything
+	-- else, and `st_client` is genuinely readable where `st_var` is not.
+	local system = node_named("st_client")
+	expect.equality(system.kind, "system_table")
+	expect.equality(render.lines[system.line], INDENT .. PUBLIC .. " st_client")
+end
+
+T["the label span covers exactly the name, past the icon"] = function()
+	local schema = with_public_table(with_system_table(fixture_schema()))
+	local render = tree.build_lines({ databases = { { name = "spacegym", expanded = true, schema = schema } } })
+	check_invariants(render)
+
+	local checked = 0
+	for _, node in ipairs(child_nodes(render)) do
+		local line = render.lines[node.line]
+		local span
+		for _, candidate in ipairs(render.spans) do
+			if candidate.line == node.line - 1 then
+				span = candidate
+			end
+		end
+		expect.no_equality(span, nil)
+		expect.equality(span.start_col, #want_indent(node))
+		expect.equality(line:sub(span.start_col + 1, span.end_col), node.label)
+		checked = checked + 1
+	end
+	expect.equality(checked, #schema.tables + #schema.views)
+end
+
+T["a private entry is never mistaken for a public one"] = function()
+	-- Neither an absent access nor an absent `is_public` may render as the globe:
+	-- being wrong in that direction says "anyone can read this" about something
+	-- nobody can.
+	local render = tree.build_lines({
+		databases = {
+			{
+				name = "db",
+				expanded = true,
+				schema = { tables = { { name = "t", canonical = "t" } }, views = { { name = "v", canonical = "v" } } },
+			},
+		},
+	})
+	check_invariants(render)
+
+	expect.equality(render.lines, {
+		EXPANDED .. " db",
+		INDENT .. PRIVATE .. " t",
+		INDENT .. PRIVATE .. " v",
+	})
+end
+
+T["icons = ascii and icons = none are the terminals-without-emoji fallbacks"] = function()
+	local schema = with_public_table(fixture_schema())
+	---@param mode string|nil
+	---@return table<string, string> # Label -> the line that carries it.
+	local function lines_for(mode)
+		local render = tree.build_lines({
+			icons = mode,
+			databases = { { name = "db", expanded = true, schema = schema } },
+		})
+		check_invariants(render)
+		local by_label = {}
+		for _, node in ipairs(child_nodes(render)) do
+			by_label[node.label] = render.lines[node.line]
+		end
+		return by_label
+	end
+
+	-- One byte and one column each, so the two ASCII glyphs align with each other
+	-- exactly as the two emoji do.
+	local ascii = lines_for("ascii")
+	expect.equality(ascii["booking"], INDENT .. "- booking")
+	expect.equality(ascii["leaderboard"], INDENT .. "+ leaderboard")
+	expect.equality(ascii["meView"], INDENT .. "+ meView")
+
+	-- `none` is the pre-icon rendering exactly: four spaces and the name.
+	local none = lines_for("none")
+	expect.equality(none["booking"], INDENT .. "booking")
+	expect.equality(none["leaderboard"], INDENT .. "leaderboard")
+
+	-- An unset or unrecognised mode is the emoji default rather than a raise: the
+	-- setting is cosmetic, and `setup()` has already refused what it does not know.
+	local default = lines_for(nil)
+	expect.equality(default["booking"], INDENT .. PRIVATE .. " booking")
+	expect.equality(default["leaderboard"], INDENT .. PUBLIC .. " leaderboard")
+	expect.equality(lines_for("hieroglyphs"), default)
+end
+
 T["an expanded database renders its loading state"] = function()
 	local render = tree.build_lines({ databases = { { name = "db", expanded = true, status = "loading" } } })
 	check_invariants(render)
@@ -280,7 +449,11 @@ T["byte offsets survive a multibyte database name"] = function()
 	check_invariants(expanded)
 	local node = expanded.nodes[2]
 	expect.equality(node.label, "héllo🎟")
-	expect.equality(expanded.spans[2].end_col, #INDENT + #node.label)
+	-- Four spaces, a four-byte lock and a space before the name, all of it counted
+	-- in bytes.
+	expect.equality(expanded.spans[2].start_col, #INDENT + #PRIVATE + 1)
+	expect.equality(expanded.spans[2].end_col, #INDENT + #PRIVATE + 1 + #node.label)
+	expect.equality(expanded.lines[2]:sub(expanded.spans[2].start_col + 1, expanded.spans[2].end_col), node.label)
 end
 
 T["a loaded database with nothing in it says so"] = function()

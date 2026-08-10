@@ -332,7 +332,7 @@ T["a schema request the sidebar started is taken over, not left hanging"] = func
 	expect.equality(content_lines()[1], "security")
 	sidebar = child.lua_get([[vim.api.nvim_buf_get_lines(B.find('spacetime://sidebar'), 0, -1, false)]])
 	expect.equality(sidebar[1], "▾ spacegym")
-	expect.equality(sidebar[2], "    booking")
+	expect.equality(sidebar[2], "    🔒 booking")
 	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 0)
 end
 

@@ -74,6 +74,28 @@ T["setup() rejects an invalid side or width"] = function()
 	end)
 end
 
+T["setup() defaults the sidebar icons to emoji and rejects an unknown mode"] = function()
+	local spacetime = require("spacetime")
+	spacetime.setup({})
+	expect.equality(spacetime.config.icons, "emoji")
+
+	for _, mode in ipairs({ "ascii", "none", "emoji" }) do
+		spacetime.setup({ icons = mode })
+		expect.equality(spacetime.config.icons, mode)
+	end
+
+	-- The accepted set is exactly the one `ui/tree.lua` defines, so the two cannot
+	-- drift apart.
+	expect.error(function()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		spacetime.setup({ icons = "runes" })
+	end)
+	expect.error(function()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		spacetime.setup({ icons = false })
+	end)
+end
+
 -- Unlike log_level, the identity override is stored: it is read whenever an
 -- identity is needed, not consumed once at setup time.
 T["setup() stores the identity override"] = function()

@@ -12,6 +12,7 @@ local logger = require("spacetime.logger")
 ---@field side? "left"|"right" Which side `:Spacetime` opens its sidebar on (default `"left"`)
 ---@field width? integer|string Sidebar width in columns, or a percentage such as `"20%"` (default `30`)
 ---@field log_lines? integer Log backlog `:SpacetimeLogs` asks for (default `200`)
+---@field icons? "emoji"|"ascii"|"none" Public/private icons in the sidebar (default `"emoji"`)
 
 local M = {}
 
@@ -20,6 +21,7 @@ local M = {}
 local defaults = {
 	side = "left",
 	width = 30,
+	icons = "emoji",
 }
 
 -- Runtime configuration, seeded with defaults and overridden by setup().
@@ -44,6 +46,13 @@ function M.setup(opts)
 	vim.validate("log_lines", opts.log_lines, function(lines)
 		return type(lines) == "number" and lines >= 0 and lines == math.floor(lines)
 	end, true, "a whole number of lines, zero or more")
+	-- Stored config too, read by `ui/tree.lua` on every sidebar render. Validated
+	-- against the table that *defines* the modes rather than against a re-spelt
+	-- list, so the two cannot drift apart; `ui/tree.lua` is pure, so requiring it
+	-- here costs nothing.
+	vim.validate("icons", opts.icons, function(icons)
+		return require("spacetime.ui.tree").ICONS[icons] ~= nil
+	end, true, '"emoji", "ascii" or "none"')
 	-- The layout options are checked in spacetime.config, beside the width
 	-- resolution that consumes them; required lazily so setup() stays cheap for
 	-- a user who never opens a window.

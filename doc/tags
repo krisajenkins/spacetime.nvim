@@ -41,6 +41,7 @@ spacetime-keys-shared	spacetime.txt	/*spacetime-keys-shared*
 spacetime-keys-sidebar	spacetime.txt	/*spacetime-keys-sidebar*
 spacetime-logs-follow	spacetime.txt	/*spacetime-logs-follow*
 spacetime-opt-connection	spacetime.txt	/*spacetime-opt-connection*
+spacetime-opt-icons	spacetime.txt	/*spacetime-opt-icons*
 spacetime-opt-identity	spacetime.txt	/*spacetime-opt-identity*
 spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
 spacetime-opt-log_lines	spacetime.txt	/*spacetime-opt-log_lines*
@@ -54,6 +55,7 @@ spacetime-requires-cli	spacetime.txt	/*spacetime-requires-cli*
 spacetime-schema-names	spacetime.txt	/*spacetime-schema-names*
 spacetime-schema-private	spacetime.txt	/*spacetime-schema-private*
 spacetime-schema-view	spacetime.txt	/*spacetime-schema-view*
+spacetime-sidebar-glyphs	spacetime.txt	/*spacetime-sidebar-glyphs*
 spacetime-sidebar-paused	spacetime.txt	/*spacetime-sidebar-paused*
 spacetime.config	spacetime.txt	/*spacetime.config*
 spacetime.setup()	spacetime.txt	/*spacetime.setup()*

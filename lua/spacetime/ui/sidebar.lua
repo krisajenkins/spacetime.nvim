@@ -171,6 +171,10 @@ function M.render()
 	end
 
 	sync_databases()
+	-- The icon mode is configuration rather than model state, so it is read per
+	-- render: a `setup()` that lands after the first paint takes effect on the
+	-- next one instead of needing the layout reopened.
+	model.icons = require("spacetime").config.icons
 	local rendered = require("spacetime.ui.tree").build_lines(model)
 	nodes = rendered.nodes
 

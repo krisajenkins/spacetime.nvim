@@ -221,18 +221,53 @@ T["the rendered names are highlighted as extmarks in the plugin namespace"] = fu
 	expect.equality(marks[1][4].hl_group, "SpacetimeDatabase")
 end
 
+T["a table name's extmark starts past its access icon, counted in bytes"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("<CR>")
+	expect.equality(sidebar_lines()[2], "    🔒 widget")
+
+	local marks = child.lua_get([[
+		vim.api.nvim_buf_get_extmarks(
+			B.find('spacetime://sidebar'), B.namespace(), { 1, 0 }, { 1, -1 }, { details = true }
+		)
+	]])
+	expect.equality(#marks, 1)
+	-- Four spaces, a four-byte lock and a space: nine bytes, six columns. A
+	-- character count would put the highlight three bytes inside the emoji.
+	expect.equality(marks[1][3], 9)
+	expect.equality(marks[1][4].end_col, 9 + #"widget")
+	expect.equality(marks[1][4].hl_group, "SpacetimeTable")
+end
+
+T["icons = ascii and icons = none replace the emoji column"] = function()
+	child.lua([[ require('spacetime').setup({ identity = 'c200aaaa', icons = 'ascii' }) ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    - widget", "▸ spacetutorial" })
+
+	-- Read per render, so a later `setup()` takes effect on the next paint.
+	child.lua([[ require('spacetime').setup({ identity = 'c200aaaa', icons = 'none' }) ]])
+	child.lua([[ S.render() ]])
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+
+	-- An unknown mode is refused where the rest of the options are, at setup()
+	-- time, rather than silently rendering something else.
+	child.lua([[ expect.error(function() require('spacetime').setup({ icons = 'runes' }) end) ]])
+end
+
 T["<CR> expands and collapses the database under the cursor"] = function()
 	child.lua([[ vim.cmd('Spacetime') ]])
 
 	child.type_keys("<CR>")
-	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    🔒 widget", "▸ spacetutorial" })
 
 	child.type_keys("<CR>")
 	expect.equality(sidebar_lines(), { "▸ spacegym", "▸ spacetutorial" })
 
 	-- `o` is the same action.
 	child.type_keys("o")
-	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    🔒 widget", "▸ spacetutorial" })
 
 	-- One request for the list, one per database for its names, one schema.
 	expect.equality(child.lua_get([[#REQUESTS]]), 4)
@@ -249,7 +284,7 @@ T["a project config naming a database expands straight to it"] = function()
 	child.lua([[ vim.cmd('Spacetime') ]])
 
 	-- Expanded *and* filled in: landing on the database means seeing its tables.
-	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    widget" })
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    🔒 widget" })
 	expect.equality(schema_requests(), 1)
 end
 
@@ -263,22 +298,22 @@ end
 -- system group is empty here — the case below builds one to prove where it goes.
 local FIXTURE_LINES = {
 	"▾ spacegym",
-	"    booking",
-	"    classInstance",
-	"    classTemplate",
-	"    identity",
-	"    ledgerBalance",
-	"    ledgerEntry",
-	"    ledgerTransaction",
-	"    materializeTick",
-	"    passPack",
-	"    redemptionTick",
-	"    security",
-	"    user",
-	"    adminTemplatesView",
-	"    meView",
-	"    myBookingsView",
-	"    publicClassesView",
+	"    🔒 booking",
+	"    🔒 classInstance",
+	"    🔒 classTemplate",
+	"    🔒 identity",
+	"    🔒 ledgerBalance",
+	"    🔒 ledgerEntry",
+	"    🔒 ledgerTransaction",
+	"    🔒 materializeTick",
+	"    🔒 passPack",
+	"    🔒 redemptionTick",
+	"    🔒 security",
+	"    🔒 user",
+	"    🌎 adminTemplatesView",
+	"    🌎 meView",
+	"    🌎 myBookingsView",
+	"    🌎 publicClassesView",
 	"▸ spacetutorial",
 }
 
@@ -405,8 +440,8 @@ T["a v10 rejection falls back to v9"] = function()
 	local lines = sidebar_lines()
 	expect.equality({ lines[1], lines[2], lines[14], lines[18] }, {
 		"▾ spacegym",
-		"    booking",
-		"    admin_templates_view",
+		"    🔒 booking",
+		"    🌎 admin_templates_view",
 		"▸ spacetutorial",
 	})
 	expect.equality(schema_requests(), 2)
@@ -424,9 +459,9 @@ T["system tables are grouped below the tables and the views"] = function()
 
 	expect.equality(sidebar_lines(), {
 		"▾ spacegym",
-		"    widget",
-		"    widgets_view",
-		"    st_table",
+		"    🔒 widget",
+		"    🔒 widgets_view",
+		"    🔒 st_table",
 		"▸ spacetutorial",
 	})
 end
@@ -473,7 +508,7 @@ T["r asks a paused database again, in case it has woken up"] = function()
 	child.lua(DEFAULT_RESPONDER)
 	child.type_keys("r")
 
-	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    🔒 widget", "▸ spacetutorial" })
 	expect.equality(schema_requests(), 2)
 end
 
@@ -648,7 +683,7 @@ T["s shows the schema of the table under the cursor"] = function()
 	serve_schema(TWO_TABLES)
 	child.lua([[ vim.cmd('Spacetime') ]])
 	child.type_keys("<CR>")
-	expect.equality(sidebar_lines(), { "▾ spacegym", "    gadget", "    widget", "▸ spacetutorial" })
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    🔒 gadget", "    🔒 widget", "▸ spacetutorial" })
 
 	-- Line three is `widget`, and it is `widget` the content window must describe.
 	child.type_keys("jj", "s")
