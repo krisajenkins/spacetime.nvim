@@ -22,6 +22,29 @@
 -- Every buffer here is created non-modifiable. Writes go through `set_lines`,
 -- which toggles the flag around the write and puts it back — including when the
 -- write itself raises, which is the whole reason the restore is `pcall`ed.
+--
+-- **'wrap' follows the buffer, not the window.** Every view here is a grid: the
+-- row table, the tree and the log are all column-aligned, and one wrapped line
+-- shunts every line under it out of alignment, which is exactly what makes a
+-- wrapped view unreadable. 'wrap' is window-local, though, and the content
+-- window is *the user's own window* — the layout only borrows it, displacing
+-- its buffer, and `q` hands it straight back. So the option is imposed by a
+-- `BufWinEnter` autocommand (see `M.watch_windows`) that claims a window when a
+-- `spacetime://` buffer appears in it and gives the window's own value back the
+-- moment it shows anything else. Two consequences worth having:
+--
+--  * every way out restores it — `q`, `:edit`, `:bdelete`, `:bnext` — rather
+--    than only the one teardown path a save-and-restore in `close()` would
+--    cover;
+--  * it follows the buffer, so a `spacetime://` buffer opened in a window the
+--    layout never created is unwrapped too, and that window is still handed
+--    back intact.
+--
+-- The saved value lives in a window-local variable rather than a module table
+-- keyed by window id: it cannot go stale, because it dies with the window.
+-- The one thing this does not chase is a `:split` of a spacetime window — the
+-- copy inherits 'wrap' along with every other window option, as any split does,
+-- and the plugin leaves ordinary split semantics alone.
 
 local M = {}
 
@@ -83,6 +106,8 @@ function M.get(name, opts)
 		return type(value) == "string" and value:match("^spacetime://.") ~= nil
 	end, false, "a spacetime:// buffer name")
 	opts = opts or {}
+	-- Before the buffer exists, so nothing can be displayed unwatched.
+	M.watch_windows()
 
 	local existing = M.find(name)
 	if existing then
@@ -129,6 +154,113 @@ function M.set_lines(bufnr, lines, first, last)
 		-- call, and a second position prefix would only obscure it.
 		error(err, 0)
 	end
+end
+
+--------------------------------------------------------------------------------
+-- The window options a spacetime buffer imposes on whatever window shows it
+--------------------------------------------------------------------------------
+
+---The window-local options every window is held to while it is showing a
+---`spacetime://` buffer, and only while it is showing one. See the module
+---header for why the list is this short: `'sidescroll'`, the obvious companion
+---to `nowrap`, is a *global* option, and the plugin has no business changing
+---the user's global settings to make its own window read better.
+---@type table<string, any>
+M.WINDOW_OPTIONS = {
+	wrap = false,
+}
+
+-- The window-local variable a claimed window stashes its own values in. Its
+-- presence is also the "this window is claimed" flag, so claiming twice cannot
+-- overwrite the user's values with our own.
+local SAVED_OPTIONS_VAR = "spacetime_saved_window_options"
+
+---The augroup |spacetime.ui.buffer.watch_windows()| installs into.
+M.WINDOW_AUGROUP = "SpacetimeWindowOptions"
+
+---Is `bufnr` one of ours?
+---@param bufnr integer
+---@return boolean
+local function is_spacetime_buffer(bufnr)
+	return vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr):match("^spacetime://") ~= nil
+end
+
+---Impose |spacetime.ui.buffer.WINDOW_OPTIONS| on `winid`, remembering what the
+---window had. Idempotent: a window already claimed keeps its saved values.
+---@param winid integer
+local function claim_window(winid)
+	if not vim.api.nvim_win_is_valid(winid) then
+		return
+	end
+	if not pcall(vim.api.nvim_win_get_var, winid, SAVED_OPTIONS_VAR) then
+		local saved = {}
+		for name in pairs(M.WINDOW_OPTIONS) do
+			saved[name] = vim.wo[winid][name]
+		end
+		vim.api.nvim_win_set_var(winid, SAVED_OPTIONS_VAR, saved)
+	end
+	for name, value in pairs(M.WINDOW_OPTIONS) do
+		vim.wo[winid][name] = value
+	end
+end
+
+---Give `winid` its own options back. A no-op on a window we never claimed —
+---which is what keeps this from imposing anything of ours on a window that
+---merely happens to fire the autocommand.
+---@param winid integer
+local function release_window(winid)
+	if not vim.api.nvim_win_is_valid(winid) then
+		return
+	end
+	local ok, saved = pcall(vim.api.nvim_win_get_var, winid, SAVED_OPTIONS_VAR)
+	if not ok or type(saved) ~= "table" then
+		return
+	end
+	for name in pairs(M.WINDOW_OPTIONS) do
+		if saved[name] ~= nil then
+			vim.wo[winid][name] = saved[name]
+		end
+	end
+	vim.api.nvim_win_del_var(winid, SAVED_OPTIONS_VAR)
+end
+
+-- Installed once per session. Cheap to re-install (the augroup is cleared), but
+-- the flag keeps `M.get` from churning autocommands on every call.
+local watching = false
+
+---Keep every window showing a `spacetime://` buffer on our options, and every
+---other window on its own.
+---
+---Called from |spacetime.ui.buffer.get()|, which is the only way a
+---`spacetime://` buffer comes into existence — so the autocommand is always in
+---place before one can be displayed. Idempotent.
+---
+---`BufWinEnter` alone, rather than a `BufWinEnter`/`BufWinLeave` pair: the
+---event fires for the *new* buffer in the affected window, with that window
+---current, whichever way the swap was made, so one handler sees both halves of
+---the change. `BufWinLeave` would additionally miss the case where the buffer
+---stays visible in a second window, and `BufEnter`/`BufLeave` are the wrong
+---events entirely — they follow the cursor, and the layout deliberately leaves
+---the cursor in the sidebar rather than in the content window.
+function M.watch_windows()
+	if watching then
+		return
+	end
+	watching = true
+
+	local group = vim.api.nvim_create_augroup(M.WINDOW_AUGROUP, { clear = true })
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		group = group,
+		desc = "spacetime.nvim: no 'wrap' while a spacetime:// buffer is on screen",
+		callback = function(args)
+			local winid = vim.api.nvim_get_current_win()
+			if is_spacetime_buffer(args.buf) then
+				claim_window(winid)
+			else
+				release_window(winid)
+			end
+		end,
+	})
 end
 
 --------------------------------------------------------------------------------
@@ -254,12 +386,16 @@ function M.open_layout()
 		vim.api.nvim_win_set_width(sidebar_win, width)
 	end
 
+	-- Chrome for a window the layout created and will close again, so these are
+	-- set outright and never put back. `'wrap'` is deliberately not among them:
+	-- it is the one option a *content* window has to give back, and it comes
+	-- from the same place for both windows — |spacetime.ui.buffer.WINDOW_OPTIONS|,
+	-- applied by the `BufWinEnter` watcher.
 	local wo = vim.wo[sidebar_win]
 	wo.winfixwidth = true
 	wo.number = false
 	wo.relativenumber = false
 	wo.signcolumn = "no"
-	wo.wrap = false
 
 	vim.api.nvim_set_current_win(sidebar_win)
 	return sidebar_win, content_win

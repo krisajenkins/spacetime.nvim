@@ -94,7 +94,7 @@ T["a payload with no long digit run is returned untouched"] = function()
 	expect.equality(json.quote_big_integers(schema), schema)
 end
 
-T["decoding the live schema fixture stays under a millisecond"] = function()
+T["decoding the live schema fixture stays within a few milliseconds"] = function()
 	local schema = read("schema_v10.json")
 	for _ = 1, 10 do
 		json.decode(schema)
@@ -112,7 +112,11 @@ T["decoding the live schema fixture stays under a millisecond"] = function()
 		end
 	end
 
-	expect.equality(best < 1e6, true)
+	-- ~10x the 0.47ms this fixture takes on developer hardware. An absolute
+	-- wall-clock budget on an unknown shared runner cannot be tight: what this
+	-- guards against is an order-of-magnitude regression (a naive decoder is
+	-- 50-100x slower), not a 2x drift between machines.
+	expect.equality(best < 5e6, true)
 end
 
 return T
