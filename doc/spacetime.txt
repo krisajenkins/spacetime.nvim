@@ -25,8 +25,8 @@ itself (|:Spacetime|, |:SpacetimeRows|, |:SpacetimeSchema| and
 |:SpacetimeLogs|): the window layout, a sidebar listing your databases and the
 tables and views inside them, `<CR>` on a table to see its rows — sorted,
 paged, yanked or floated in full — the schema of a table alongside the module's
-reducers, and a static view of a database's logs. Following the logs live is
-the next piece.
+reducers, and a database's logs, either as a static tail or followed live with
+|:SpacetimeLogs|!.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -125,7 +125,9 @@ log_lines ~
     Type: `number`, default: `200`
 
     How much log backlog |:SpacetimeLogs| asks the server for, as the
-    `num_lines` of the request. Zero is allowed and means "no backlog".
+    `num_lines` of the request. Zero is allowed and means "no backlog". A
+    follow asks for the same backlog before it starts streaming; what it keeps
+    from then on is capped at 5000 entries.
 
     A negative number, or one with a fractional part, is rejected by
     |spacetime.setup()|: the value goes straight into a query string.
@@ -142,8 +144,8 @@ The plugin defines ten commands: >
     :SpacetimeTables [db]       list a database's tables   (placeholder)
     :SpacetimeRows {tbl}        browse rows of [db.]tbl
     :SpacetimeSchema {tbl}      schema of [db.]tbl
-    :SpacetimeLogs[!] [db]      show a database's logs (! placeholder)
-    :SpacetimeLogsStop          stop following logs        (placeholder)
+    :SpacetimeLogs[!] [db]      show a database's logs (! follows)
+    :SpacetimeLogsStop          stop following logs
     :SpacetimeStatus            print the resolved connection
 <
 A command marked (placeholder) exists, accepts and completes its argument, and
@@ -270,23 +272,44 @@ tokens in that file are never touched by completion.
     every |:SpacetimeLogs| makes a request, and running it for a second
     database cancels the first.
 
-    The bang means follow, and follow is not implemented yet:
-    |:SpacetimeLogs|! reports that and shows the static log instead, so a bang
-    never quietly behaves as though you had not typed it.
+    The bang means follow: the connection stays open and lines are appended as
+    the server produces them. The badge says which of the two you have, and
+    reads `· following` while the stream is live: >
+
+    spacegym · 412 lines · asked for 200 · following
+<
+    Three properties of the follow are worth knowing:
+
+    • The buffer is written on a 100 ms clock rather than once per line, so a
+      module logging hundreds of lines a second costs ten repaints a second
+      rather than hundreds.
+    • The view keeps the last 5000 entries. Older ones drop off the top.
+    • The cursor is pulled to each new last line only if it was already on the
+      last line. Scroll up to read something and incoming lines leave the
+      cursor alone; `G` starts it following the bottom again.
+
+    Opening any other logs, with or without a bang, stops the follow it
+    replaces. See |:SpacetimeLogsStop| for the other three ways one ends.
+
+                                                           *:SpacetimeLogsStop*
+:SpacetimeLogsStop
+
+    Stop following. The buffer keeps everything already on screen — the point
+    of stopping is usually to read what went past — and only the badge changes,
+    to `· stopped`. Says so and does nothing when no follow is running.
+
+    The stream is also closed when the content buffer is wiped and when Neovim
+    exits, so a `curl` process is never left running behind you. A stop is not
+    an error and is never reported as one.
 
                                                             *:SpacetimeConnect*
 :SpacetimeConnect [{nickname}]
                                                              *:SpacetimeTables*
 :SpacetimeTables [{database}]
-                                                           *:SpacetimeLogsStop*
-:SpacetimeLogsStop
 
     Placeholders. Each command exists, takes and completes its argument as
     documented above, and notifies you that it is not implemented yet. Nothing
     they do can fail, because they do not do anything yet.
-
-    |:SpacetimeLogsStop| will stop a log follow once |:SpacetimeLogs|! starts
-    one.
 
                                                             *:SpacetimeStatus*
 :SpacetimeStatus

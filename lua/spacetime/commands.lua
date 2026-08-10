@@ -22,8 +22,8 @@
 -- error raised out of a completion function is printed under the user's cursor
 -- mid-keystroke, which is worse than completing nothing.
 --
--- **The not-implemented seam.** Most of the command set is scaffolding for
--- roadmap tasks 25-33. Those bodies call `todo()`, which notifies through
+-- **The not-implemented seam.** What is left of the command set's scaffolding is
+-- `:SpacetimeConnect` and `:SpacetimeTables`. Those bodies call `todo()`, which notifies through
 -- `spacetime.logger` — a message, never an error and never a stack trace. A
 -- later task replaces exactly one `run` field in `M.COMMANDS` and deletes its
 -- `todo` call; nothing else about the command (its name, `nargs`, `bang` or
@@ -383,18 +383,20 @@ local function open_schema(arg)
 	})
 end
 
----Show `[db]`'s logs. What `:SpacetimeLogs` does.
+---Show `[db]`'s logs. What `:SpacetimeLogs[!]` does.
 ---@param arg string The command's one argument; empty when it was omitted.
-local function open_logs(arg)
+---@param follow boolean The bang: keep the connection open and stream.
+local function open_logs(arg, follow)
 	local connection, database = database_target(arg, ":SpacetimeLogs")
 	if not connection or not database then
 		return
 	end
 
 	-- The layout first: `ui/logs.lua` paints into the content buffer, and there is
-	-- no content buffer until the browser is open.
+	-- no content buffer until the browser is open — nor anything for the follow's
+	-- `BufWipeout` autocommand to attach to.
 	require("spacetime.ui.sidebar").open()
-	require("spacetime.ui.logs").open({ connection = connection, database = database })
+	require("spacetime.ui.logs").open({ connection = connection, database = database, follow = follow })
 end
 
 ---One user command, as `M.register` needs it.
@@ -479,24 +481,18 @@ M.COMMANDS = {
 		nargs = "?",
 		bang = true,
 		complete = M.complete_database,
-		-- The bang is the follow/static switch, and only the static half is built
-		-- (roadmap task 32 owns follow). Falling through to the static view without
-		-- a word would look like follow had started and then stopped on its own, so
-		-- the bang says what it did instead of doing it silently.
+		-- The bang is the follow/static switch: `!` streams until
+		-- `:SpacetimeLogsStop`, the buffer goes or Neovim exits; without it the
+		-- backlog is fetched once and the connection closes.
 		run = function(cmd)
-			if cmd.bang then
-				require("spacetime.logger").warn(
-					":SpacetimeLogs! (follow) is not implemented yet (roadmap task 32); showing the static log instead"
-				)
-			end
-			open_logs(cmd.args)
+			open_logs(cmd.args, cmd.bang == true)
 		end,
 	},
 	{
 		name = "SpacetimeLogsStop",
 		desc = "Stop following logs",
 		run = function()
-			todo(":SpacetimeLogsStop", 32)
+			require("spacetime.ui.logs").stop()
 		end,
 	},
 	{

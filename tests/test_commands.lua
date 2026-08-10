@@ -201,27 +201,24 @@ T["every unimplemented command notifies once, and none of them raise"] = functio
 				"SpacetimeConnect",
 				"SpacetimeConnect testnet",
 				"SpacetimeTables spacegym",
-				"SpacetimeLogsStop",
 			},
 		}
 	)
 
-	expect.equality(#child.lua_get("NOTIFIED"), 4)
+	expect.equality(#child.lua_get("NOTIFIED"), 3)
 end
 
--- The static log view is tests/test_logs_ui.lua's business; what is asserted
--- here is that the bang says which of the two features ran. Follow is roadmap
--- task 32, and a `!` that silently produced a static log would look like a
--- follow that had started and stopped on its own.
-T[":SpacetimeLogs says so rather than treating its bang as the static form"] = function()
+-- The static log view is tests/test_logs_ui.lua's business and following is
+-- tests/test_logs_follow.lua's; what is asserted here is that neither form is a
+-- placeholder any more — with no database to work on, the bang stops at exactly
+-- the same complaint as the plain form and adds nothing of its own.
+T[":SpacetimeLogs and its bang both stop at the same complaint"] = function()
 	child.lua([[
 		for _, name in ipairs({ 'HOST', 'PORT', 'SERVER', 'DATABASE', 'TOKEN' }) do
 			vim.env['SPACETIMEDB_' .. name] = nil
 		end
 	]])
 
-	-- With no database anywhere, both forms stop at the same complaint — which is
-	-- what makes the bang's own message the only difference between them.
 	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeLogs') end) ]])
 	local notified = child.lua_get("NOTIFIED")
 	expect.equality(#notified, 1)
@@ -230,9 +227,9 @@ T[":SpacetimeLogs says so rather than treating its bang as the static form"] = f
 	child.lua([[ NOTIFIED = {} ]])
 	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeLogs!') end) ]])
 	notified = child.lua_get("NOTIFIED")
-	expect.equality(#notified, 2)
-	expect.equality(notified[1]:find("follow", 1, true) ~= nil, true)
-	expect.equality(notified[1]:find("roadmap task 32", 1, true) ~= nil, true)
+	expect.equality(#notified, 1)
+	expect.equality(notified[1]:find(":SpacetimeLogs <database>", 1, true) ~= nil, true)
+	expect.equality(notified[1]:find("not implemented", 1, true), nil)
 end
 
 -- What the sidebar then *does* is tests/test_tree_ui.lua's business; all that is

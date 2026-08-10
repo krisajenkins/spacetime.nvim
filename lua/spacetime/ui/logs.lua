@@ -1,8 +1,8 @@
--- The log view: what `:SpacetimeLogs [db]` paints into the content window.
+-- The log view: what `:SpacetimeLogs[!] [db]` paints into the content window.
 --
--- `lib/client:logs` puts `GET /v1/database/{db}/logs?num_lines=N&follow=false`
--- on the wire and `lib/logs.parse_line` turns each NDJSON line into an entry;
--- this module is the part that owns the buffer. It lives under `ui/` and may
+-- `lib/client:logs` puts `GET /v1/database/{db}/logs?num_lines=N&follow=…` on
+-- the wire and `lib/logs.parse_line` turns each NDJSON line into an entry; this
+-- module is the part that owns the buffer. It lives under `ui/` and may
 -- therefore touch `vim.api`; everything it calls under `lib/` may not.
 --
 -- Five things this file exists to get right:
@@ -40,11 +40,30 @@
 -- which is exactly the wrong thing to do to a log message. Two narrow columns
 -- (level, timestamp) padded to their widest entry is the whole of the layout.
 --
--- **Follow is roadmap task 32**, and it plugs in at two named places: the
--- `false` handed to `client:logs` below, and `M.append`, which task 32 replaces
--- with a coalesced 100 ms flush off a `vim.uv` timer plus a ring buffer capped at
--- 5000 entries. `:SpacetimeLogs!` currently says that it is not implemented and
--- shows the static backlog instead; see `commands.lua`.
+-- Follow — `:SpacetimeLogs!` — adds four rules of its own on top of those:
+--
+-- 6. **The buffer is written on a clock, not per line.** `on_entry` only ever
+--    appends to `pending`; a single repeating |vim.uv| timer, `M.FLUSH_MS` apart,
+--    moves whatever has accumulated into `view.entries` and repaints. A module
+--    logging 500 lines a second therefore costs ten writes a second rather than
+--    five hundred, which is the difference between a log you can read and an
+--    editor that stalls. `state.debounce` is deliberately *not* reused for this:
+--    it is trailing-edge and one-shot, so a stream that never goes quiet for
+--    `FLUSH_MS` would restart the countdown forever and never paint at all.
+-- 7. **The bottom is sticky only if the cursor was already on it.** Scrolling up
+--    to read something is the one moment a follow must not move the cursor, so
+--    `render` asks where the cursor is *before* the write and puts it back on the
+--    last line only if that is where it already was.
+-- 8. **`M.MAX_ENTRIES` is a hard cap.** `append` drops from the front once the
+--    view is over it: a follow left running overnight must cost bounded memory,
+--    and the oldest line is the one worth losing.
+-- 9. **Every teardown path kills the handle *and* the timer.** `:SpacetimeLogsStop`,
+--    `BufWipeout` on the content buffer and `VimLeavePre` all go through
+--    `teardown`, because a leaked `curl` outliving Neovim and a repeating timer
+--    firing at a wiped buffer are the same bug seen from two ends.
+--
+-- Roadmap task 33 still owns the level filter (`<`/`>`), which re-renders from
+-- the same ring buffer; `M.KEYMAPS` is the seam it plugs into.
 
 local M = {}
 
@@ -58,6 +77,14 @@ M.OWNER = "logs"
 ---`:help` all have one number to point at — the same reason
 ---`ui/rows.PAGE_SIZE` is exported.
 M.DEFAULT_LINES = 200
+
+---How long a follow lets entries accumulate before it repaints, in milliseconds.
+---
+---The coalescing interval from ROADMAP.md — see point 6 of the module header.
+M.FLUSH_MS = 100
+
+---How many entries a follow keeps. The oldest go first.
+M.MAX_ENTRIES = 5000
 
 ---Every key the content window binds while it is showing logs.
 ---
@@ -95,17 +122,29 @@ local LEVEL_HL = {
 ---@field connection SpacetimeConnection Resolved by the caller, not by this module.
 ---@field database string Database name or identity, as it goes in the URL path.
 ---@field num_lines? integer Backlog to ask for. Defaults to the configured value.
+---@field follow? boolean Keep the connection open and stream. What `!` means.
 
 ---The request plus what has become of it.
 ---@class SpacetimeLogsView : SpacetimeLogsRequest
 ---@field num_lines integer Resolved: never `nil` once the view exists.
+---@field follow boolean Resolved: never `nil` once the view exists.
+---@field following boolean Is the stream live *now*? `false` once it has stopped.
 ---@field status "loading"|"ready"|"error"
 ---@field error? string Set when `status == "error"`.
----@field entries spacetime.LogEntry[] In arrival order, oldest first.
+---@field entries spacetime.LogEntry[] In arrival order, oldest first. Capped at `M.MAX_ENTRIES`.
 
 ---What is on screen, or being fetched onto it. `nil` before the first open.
 ---@type SpacetimeLogsView|nil
 local view = nil
+
+---The one repeating flush timer, or `nil` when nothing is being followed.
+---
+---Module-local rather than a field of `view`, because "at most one follow at a
+---time" is the invariant, and one variable is how it is enforced. Not
+---`state.data.timers`: those are `state.debounce`'s one-shot timers, and point 6
+---of the module header is why this is not a debounce.
+---@type any
+local flush_timer = nil
 
 ---How much backlog to ask for, from |spacetime.setup()|.
 ---
@@ -153,16 +192,25 @@ end
 ---The last piece matters more here than it looks: a tail that came back exactly
 ---`num_lines` long is almost certainly cut off at the top, and the number that
 ---produced it is the one to raise.
+---
+---A follow adds a fourth field, and it is the only thing on screen that says
+---whether lines are still coming: `following` while the stream is live, `stopped`
+---once `:SpacetimeLogsStop` — or the server — has ended it. A static view says
+---neither, because for it the question does not arise.
 ---@param current SpacetimeLogsView
 ---@param count integer Entries rendered.
 ---@return string
 local function badge_text(current, count)
-	return ("%s · %d line%s · asked for %d"):format(
+	local badge = ("%s · %d line%s · asked for %d"):format(
 		current.database,
 		count,
 		count == 1 and "" or "s",
 		current.num_lines
 	)
+	if current.follow then
+		badge = badge .. (current.following and " · following" or " · stopped")
+	end
+	return badge
 end
 
 ---Every line of the view, and every span to mark on it.
@@ -239,6 +287,9 @@ end
 ---A no-op when there is nothing to show, when the content buffer does not exist,
 ---or when another view has claimed it since — a log response that lands after
 ---the user has opened a table's rows must not paint over the grid.
+---
+---While following, the cursor is pulled to the new last line **only if it was on
+---the old one**: see point 7 of the module header.
 function M.render()
 	local current = view
 	if current == nil then
@@ -252,6 +303,16 @@ function M.render()
 	local bufnr = buffer.find(buffer.CONTENT_NAME)
 	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
 		return
+	end
+
+	-- Asked before the write, because afterwards there is no way to tell "was on
+	-- the last line" from "is on a line that used to be the last one". Only a
+	-- follow moves the cursor at all; nothing else here repaints under the user.
+	local winid = current.follow and buffer.window_showing(bufnr) or nil
+	local at_bottom = false
+	if winid then
+		local ok_cursor, cursor = pcall(vim.api.nvim_win_get_cursor, winid)
+		at_bottom = ok_cursor and cursor[1] >= vim.api.nvim_buf_line_count(bufnr)
 	end
 	-- Applying an (as yet empty) key map is how the row grid's keys come off the
 	-- shared buffer; see point 5 of the module header.
@@ -278,30 +339,176 @@ function M.render()
 			hl_group = span.hl_group,
 		})
 	end
+
+	if at_bottom and winid then
+		-- `pcall`: a window closed between the two halves of this function is not
+		-- an error worth reporting, and the lines have already landed.
+		pcall(vim.api.nvim_win_set_cursor, winid, { vim.api.nvim_buf_line_count(bufnr), 0 })
+	end
 end
 
 --------------------------------------------------------------------------------
 -- Fetching
 --------------------------------------------------------------------------------
 
----Take the entries a completed request accumulated and show them.
+---Take the entries a request has accumulated and show them, oldest first out.
 ---
----Split out from `fetch` because it is the seam roadmap task 32 needs: follow
----calls this repeatedly off a coalesced timer instead of once at completion, and
----caps what it keeps at a ring buffer of 5000.
+---Called once at completion for a static view and every `M.FLUSH_MS` for a
+---follow, which is why the cap lives here rather than at either call site: a
+---follow left running overnight must cost bounded memory, and dropping from the
+---front is what makes the view a tail rather than a transcript.
 ---@param current SpacetimeLogsView
 ---@param entries spacetime.LogEntry[] Accumulated in fast-event context; main loop now.
 local function append(current, entries)
+	local kept = current.entries
 	for _, entry in ipairs(entries) do
-		current.entries[#current.entries + 1] = entry
+		kept[#kept + 1] = entry
+	end
+
+	local excess = #kept - M.MAX_ENTRIES
+	if excess > 0 then
+		local total = #kept
+		for i = 1, total - excess do
+			kept[i] = kept[i + excess]
+		end
+		for i = total - excess + 1, total do
+			kept[i] = nil
+		end
 	end
 end
 
----Fetch the backlog and repaint when it lands.
+---Empty `pending` and hand back what was in it.
+---
+---Cleared **in place**: the fast-event `on_entry` closed over this exact table,
+---so replacing it with a fresh one would leave every later line being appended to
+---a table nobody reads.
+---@param pending spacetime.LogEntry[]
+---@return spacetime.LogEntry[] taken
+local function take(pending)
+	local taken = {} ---@type spacetime.LogEntry[]
+	for i = 1, #pending do
+		taken[i] = pending[i]
+		pending[i] = nil
+	end
+	return taken
+end
+
+---Stop the flush timer, if one is running, and close its libuv handle.
+---
+---Closed rather than merely stopped: an open handle keeps a headless Neovim
+---alive, which is how this would show up as a hung test run rather than as a
+---leak (`state.reset` closes its own timers for the same reason).
+local function stop_flush()
+	if flush_timer then
+		flush_timer:stop()
+		if not flush_timer:is_closing() then
+			flush_timer:close()
+		end
+		flush_timer = nil
+	end
+end
+
+---Start the one repeating timer that moves `pending` into the view.
+---
+---The uv callback runs in a |fast-event| context, so it does nothing but read a
+---table length and `vim.schedule`; every `vim.api` call is on the main loop, in
+---`M.render`. See point 6 of the module header for why this is a repeating timer
+---and not `state.debounce`.
+---@param current SpacetimeLogsView
+---@param key string The `state` key this follow is registered under.
+---@param seq integer The token `state.start` handed back.
+---@param pending spacetime.LogEntry[] The table `on_entry` appends to.
+local function start_flush(current, key, seq, pending)
+	stop_flush()
+
+	local timer = vim.uv.new_timer()
+	flush_timer = timer
+	timer:start(M.FLUSH_MS, M.FLUSH_MS, function()
+		if #pending == 0 then
+			-- A quiet stream costs nothing but this comparison: no schedule, no
+			-- render, no write.
+			return
+		end
+		vim.schedule(function()
+			-- Three ways this turn can already be obsolete: the follow was torn
+			-- down, it was superseded by another request under the same key, or
+			-- another database's logs took the view over.
+			if flush_timer ~= timer or not require("spacetime.state").is_current(key, seq) or current ~= view then
+				return
+			end
+			local taken = take(pending)
+			if #taken == 0 then
+				return
+			end
+			-- The backlog arrives down this path too, so this is also what turns
+			-- `loading…` into the first screenful.
+			current.status = "ready"
+			append(current, taken)
+			M.render()
+		end)
+	end)
+end
+
+---Stop a follow: the timer first, then the process behind it.
+---
+---Idempotent, and safe on a view that was never following. `state.cancel` kills
+---the handle *and* burns the key's token, so the `cb(nil, nil)` the cancelled
+---stream reports is dropped by the `state.finish` check in `fetch` rather than
+---being rendered — a clean stop is not an error.
+---
+---Deliberately paints nothing: `VimLeavePre` is one of its callers.
+---@param current SpacetimeLogsView|nil
+local function teardown(current)
+	stop_flush()
+	if current == nil or not current.following then
+		return
+	end
+	current.following = false
+	local state = require("spacetime.state")
+	state.cancel(state.key("logs", current.database))
+end
+
+---The augroup the follow's teardown autocommands live in.
+---
+---One group, recreated with `clear = true` on every follow, so a session that
+---follows twenty databases still has exactly two autocommands.
+local AUGROUP = "SpacetimeLogsFollow"
+
+---Arrange for the stream to die with the buffer, and with Neovim.
+---
+---A `curl` that outlives the editor is the failure this exists to prevent, which
+---is why `VimLeavePre` is registered whether or not the content buffer is there
+---to hang a `BufWipeout` off.
+---@param bufnr integer|nil The content buffer, when one exists.
+local function watch(bufnr)
+	local group = vim.api.nvim_create_augroup(AUGROUP, { clear = true })
+
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		desc = "spacetime: stop following logs before Neovim exits",
+		callback = function()
+			teardown(view)
+		end,
+	})
+
+	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+		vim.api.nvim_create_autocmd("BufWipeout", {
+			group = group,
+			buffer = bufnr,
+			desc = "spacetime: stop following logs when the content buffer goes",
+			callback = function()
+				teardown(view)
+			end,
+		})
+	end
+end
+
+---Fetch the backlog — and, when following, keep reading — and repaint.
 ---
 ---The handle is registered with `state.start` *before* the request goes out: a
 ---stubbed transport completes inside the call, and a callback that ran before
----`start` returned would have no token to present.
+---`start` returned would have no token to present. The flush timer starts before
+---it too, for the same reason.
 ---@param current SpacetimeLogsView
 local function fetch(current)
 	local state = require("spacetime.state")
@@ -321,7 +528,14 @@ local function fetch(current)
 		end,
 	})
 
-	handle = client:logs(current.database, current.num_lines, false, function(entry)
+	if current.follow then
+		local buffer = require("spacetime.ui.buffer")
+		current.following = true
+		start_flush(current, key, seq, pending)
+		watch(buffer.find(buffer.CONTENT_NAME))
+	end
+
+	handle = client:logs(current.database, current.num_lines, current.follow, function(entry)
 		pending[#pending + 1] = entry
 	end, function(err)
 		-- A response that lost its token belongs to a database the user has moved
@@ -331,6 +545,10 @@ local function fetch(current)
 		if not state.finish(key, seq) then
 			return
 		end
+		-- This request is still the current one, so the timer running is this
+		-- follow's: the stream has ended, so the clock it was flushing on goes too.
+		stop_flush()
+		current.following = false
 		if current ~= view then
 			return
 		end
@@ -340,7 +558,7 @@ local function fetch(current)
 			current.error = err.message
 		else
 			current.status = "ready"
-			append(current, pending)
+			append(current, take(pending))
 		end
 		M.render()
 	end)
@@ -348,15 +566,16 @@ end
 
 ---Show a database's logs in the content window.
 ---
----What `:SpacetimeLogs` does. Never served from a cache — see point 4 of the
+---What `:SpacetimeLogs[!]` does. Never served from a cache — see point 4 of the
 ---module header — so every call puts one request on the wire and supersedes
----whatever was already in flight for that database.
+---whatever was already in flight for that database, follow or not.
 ---@param request SpacetimeLogsRequest
 function M.open(request)
 	vim.validate("request", request, "table")
 	vim.validate("connection", request.connection, "table")
 	vim.validate("database", request.database, "string")
 	vim.validate("num_lines", request.num_lines, "number", true)
+	vim.validate("follow", request.follow, "boolean", true)
 
 	if request.database == "" then
 		-- A name we cannot fetch anything by is data, not a programming error.
@@ -366,6 +585,10 @@ function M.open(request)
 
 	local state = require("spacetime.state")
 	local key = state.key("logs", request.database)
+
+	-- Whatever was being followed stops here, whichever database it was: there is
+	-- one flush timer, and the follow that is starting is about to want it.
+	teardown(view)
 
 	-- A different database is a different key, so `state.start` below would leave
 	-- the previous fetch running and its token live. Cancel it by hand.
@@ -380,6 +603,8 @@ function M.open(request)
 		connection = request.connection,
 		database = request.database,
 		num_lines = request.num_lines and math.floor(request.num_lines) or configured_lines(),
+		follow = request.follow == true,
+		following = false,
 		status = "loading",
 		entries = {},
 	}
@@ -388,6 +613,32 @@ function M.open(request)
 
 	M.render()
 	fetch(view)
+end
+
+---Stop following, keeping what has already been shown.
+---
+---What `:SpacetimeLogsStop` does. The buffer is left exactly as it is — the point
+---of stopping is usually to read what went past — and only the badge changes, to
+---say that nothing more is coming.
+---
+---Says so and does nothing when no follow is running: a user who types this after
+---the stream has already ended has done nothing wrong.
+function M.stop()
+	local current = view
+	if current == nil or not current.following then
+		require("spacetime.logger").info("no log follow is running")
+		return
+	end
+
+	local database = current.database
+	teardown(current)
+	-- A follow stopped before its first line would otherwise sit on `loading…`
+	-- forever, which reads as a hang rather than as a stop.
+	if current.status == "loading" then
+		current.status = "ready"
+	end
+	M.render()
+	require("spacetime.logger").info(("stopped following %s's logs"):format(database))
 end
 
 return M

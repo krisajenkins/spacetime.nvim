@@ -9,8 +9,8 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > `:SpacetimeRows`, `:SpacetimeSchema` and `:SpacetimeLogs`): the layout, a
 > sidebar listing your databases and the tables and views inside them, `<CR>` on
 > a table to see its rows — sorted, paged, yanked or floated in full — the schema
-> of a table alongside the module's reducers, and a static view of a database's
-> logs. Following the logs live is the next piece.
+> of a table alongside the module's reducers, and a database's logs, either as a
+> static tail or followed live with `:SpacetimeLogs!`.
 
 ## Requirements
 
@@ -71,8 +71,8 @@ require("spacetime").setup({
 | `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
 | `:SpacetimeRows {tbl}`     | Open the browser on the rows of `[db.]tbl`       |
 | `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`, and the reducers  |
-| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` (follow) is a *placeholder* |
-| `:SpacetimeLogsStop`       | Stop following logs — *placeholder*              |
+| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` follows them live    |
+| `:SpacetimeLogsStop`       | Stop following logs                              |
 | `:SpacetimeStatus`         | Print the resolved connection                    |
 
 A *placeholder* command exists, completes its argument and tells you it is not
@@ -271,9 +271,26 @@ Nothing here is cached: a log tail is stale the moment it lands, so every
 `:SpacetimeLogs` is a fresh request, and running it for a second database
 cancels the first.
 
-`:SpacetimeLogs!` — follow — is not implemented yet. It says so and shows the
-static log instead, so a bang never quietly behaves as if you had not typed it.
-`:SpacetimeLogsStop`, which will stop a follow, is still a placeholder too.
+### `:SpacetimeLogs!` — follow
+
+The bang keeps the connection open and appends lines as the server produces
+them. The badge says which of the two you are looking at:
+
+```
+spacegym · 412 lines · asked for 200 · following
+```
+
+- The buffer is written on a 100 ms clock rather than once per line, so a module
+  logging hundreds of lines a second costs ten repaints a second, not hundreds.
+- The view keeps the last **5000** entries; older ones drop off the top.
+- The cursor is pulled down to each new last line **only if it was already on
+  the last line**. Scroll up to read something and the incoming lines leave you
+  alone; press `G` to start following the bottom again.
+
+`:SpacetimeLogsStop` ends the follow and leaves the buffer as it is — the badge
+then reads `· stopped`. The connection is also closed when the content buffer
+is wiped and when Neovim exits, so no `curl` is left running behind you.
+Opening any other logs — with or without a bang — stops the follow it replaces.
 
 ### `:SpacetimeStatus`
 
