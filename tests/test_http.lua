@@ -1,9 +1,10 @@
--- Tests for the pure half of the transport.
+-- Tests for the transport.
 --
 -- No child Neovim and no process: `build` and `parse_head` are argv/stdin in,
--- data out. The argv assertions are exact-equality on purpose — the element
--- order is part of the contract, and a stray `--location` or a leaked token
--- should fail here rather than in a live request.
+-- data out, and `request` runs over the `http._system` seam with a fake in
+-- place of `vim.system`. The argv assertions are exact-equality on purpose —
+-- the element order is part of the contract, and a stray `--location` or a
+-- leaked token should fail here rather than in a live request.
 local http = require("spacetime.lib.http")
 local expect = MiniTest.expect
 
@@ -190,6 +191,247 @@ T["an incomplete head returns nil rather than raising"] = function()
 	expect.equality(http.parse_head("HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n"), nil)
 	expect.equality(http.parse_head("HTTP/1.1 20"), nil)
 	expect.equality(http.parse_head(""), nil)
+end
+
+---Run `body` with `http._system` replaced, restoring it even on failure.
+---@param fake function
+---@param run function
+local function with_system(fake, run)
+	local saved = http._system
+	http._system = fake
+	local ok, err = pcall(run)
+	http._system = saved
+	if not ok then
+		error(err, 0)
+	end
+end
+
+---Pump the event loop until `pred` holds — this is what runs the scheduled
+---callbacks, since `vim.schedule_wrap` defers them past the current turn.
+---@param pred function
+local function wait_for(pred)
+	expect.equality(vim.wait(1000, pred, 5), true)
+end
+
+---A `vim.system` stand-in that reports `out` immediately.
+---@param out table
+---@return function
+local function completes_with(out)
+	return function(_, _, on_exit)
+		on_exit(out)
+		return { kill = function() end }
+	end
+end
+
+T["a 200 yields status, headers and body"] = function()
+	local got
+	with_system(
+		completes_with({
+			code = 0,
+			stdout = 'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{"ok":true}',
+			stderr = "",
+		}),
+		function()
+			http.request({ url = URL }, function(err, response)
+				got = { err = err, response = response }
+			end)
+			wait_for(function()
+				return got ~= nil
+			end)
+		end
+	)
+	expect.equality(got.err, nil)
+	expect.equality(got.response.status, 200)
+	expect.equality(got.response.headers["content-type"], "application/json")
+	expect.equality(got.response.body, '{"ok":true}')
+end
+
+T["the config block goes to stdin and stdout is captured raw"] = function()
+	local seen
+	with_system(function(cmd, opts, on_exit)
+		seen = { cmd = cmd, opts = opts }
+		on_exit({ code = 0, stdout = "HTTP/1.1 200 OK\r\n\r\n", stderr = "" })
+		return { kill = function() end }
+	end, function()
+		local done = false
+		http.request({ url = URL, token = TOKEN }, function()
+			done = true
+		end)
+		wait_for(function()
+			return done
+		end)
+	end)
+	local built = http.build({ url = URL, token = TOKEN })
+	expect.equality(seen.cmd, built.argv)
+	expect.equality(seen.opts.stdin, built.stdin)
+	expect.equality(type(seen.opts.stdin), "string")
+	-- `text = true` would rewrite CRLF and corrupt the framing; `timeout` would
+	-- shadow curl's own `--max-time` with an unclassifiable exit 124.
+	expect.equality(seen.opts.text, nil)
+	expect.equality(seen.opts.timeout, nil)
+	expect.equality(table.concat(seen.cmd, " "):find(TOKEN, 1, true), nil)
+end
+
+T["a stream request is forced back onto the buffered path"] = function()
+	local seen
+	local req = { url = URL, stream = true }
+	with_system(function(cmd, _, on_exit)
+		seen = cmd
+		on_exit({ code = 0, stdout = "HTTP/1.1 200 OK\r\n\r\n", stderr = "" })
+		return { kill = function() end }
+	end, function()
+		local done = false
+		http.request(req, function()
+			done = true
+		end)
+		wait_for(function()
+			return done
+		end)
+	end)
+	expect.equality(seen, http.build({ url = URL }).argv)
+	-- The caller's own table is left alone.
+	expect.equality(req.stream, true)
+end
+
+T["each mapped curl exit code yields its message"] = function()
+	local cases = {
+		{ 6, "could not resolve host" },
+		{ 7, "connection refused" },
+		{ 28, "timed out" },
+		{ 35, "TLS failure" },
+		{ 60, "TLS failure" },
+	}
+	for _, case in ipairs(cases) do
+		local code, message = case[1], case[2]
+		local got
+		with_system(
+			completes_with({ code = code, stdout = "", stderr = ("curl: (%d) something went wrong"):format(code) }),
+			function()
+				http.request({ url = URL }, function(err, response)
+					got = { err = err, response = response }
+				end)
+				wait_for(function()
+					return got ~= nil
+				end)
+			end
+		)
+		-- Exactly the message: a mapped code does not get curl's stderr bolted on.
+		expect.equality(got.err, message)
+		expect.equality(got.response, nil)
+	end
+end
+
+T["an unmapped exit code includes the number and curl's stderr"] = function()
+	local stderr = "curl: (47) Maximum (50) redirects followed"
+	local got
+	with_system(completes_with({ code = 47, stdout = "", stderr = stderr }), function()
+		http.request({ url = URL }, function(err, response)
+			got = { err = err, response = response }
+		end)
+		wait_for(function()
+			return got ~= nil
+		end)
+	end)
+	expect.no_equality(got.err:find("47", 1, true), nil)
+	expect.no_equality(got.err:find(stderr, 1, true), nil)
+	expect.equality(got.response, nil)
+end
+
+T["a truncated head is an error, not a crash"] = function()
+	local got
+	with_system(
+		completes_with({ code = 0, stdout = "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n", stderr = "" }),
+		function()
+			http.request({ url = URL }, function(err, response)
+				got = { err = err, response = response }
+			end)
+			wait_for(function()
+				return got ~= nil
+			end)
+		end
+	)
+	expect.no_equality(got.err, nil)
+	expect.equality(got.response, nil)
+end
+
+T["a garbage status line surfaces as an error"] = function()
+	local got
+	with_system(
+		completes_with({ code = 0, stdout = "<html><head><title>Corporate Proxy</title>\r\n\r\n", stderr = "" }),
+		function()
+			http.request({ url = URL }, function(err, response)
+				got = { err = err, response = response }
+			end)
+			wait_for(function()
+				return got ~= nil
+			end)
+		end
+	)
+	expect.no_equality(got.err:find("unparseable status line", 1, true), nil)
+	expect.equality(got.response, nil)
+end
+
+T["kill() propagates to the process and is idempotent"] = function()
+	local killed, signal = 0, nil
+	with_system(function()
+		return {
+			kill = function(_, sig)
+				killed = killed + 1
+				signal = sig
+			end,
+		}
+	end, function()
+		local handle = http.request({ url = URL }, function() end)
+		handle:kill()
+		expect.equality(killed, 1)
+		expect.equality(signal, "sigterm")
+		handle:kill()
+		expect.equality(killed, 1)
+	end)
+end
+
+T["a killed request never invokes the callback"] = function()
+	local called = false
+	local exit
+	with_system(function(_, _, on_exit)
+		-- Hold the completion callback rather than firing it, so the kill lands
+		-- first and the exit arrives afterwards.
+		exit = on_exit
+		return { kill = function() end }
+	end, function()
+		local handle = http.request({ url = URL }, function()
+			called = true
+		end)
+		handle:kill()
+		exit({ code = 0, stdout = "HTTP/1.1 200 OK\r\n\r\nok", stderr = "" })
+		vim.wait(50)
+		expect.equality(called, false)
+	end)
+end
+
+T["callbacks arrive scheduled, not in a fast-event context"] = function()
+	local called, fast = false, nil
+	with_system(completes_with({ code = 0, stdout = "HTTP/1.1 200 OK\r\n\r\nok", stderr = "" }), function()
+		http.request({ url = URL }, function()
+			called = true
+			fast = vim.in_fast_event()
+		end)
+		-- The stub called `on_exit` synchronously, yet nothing has run yet.
+		expect.equality(called, false)
+		wait_for(function()
+			return called
+		end)
+	end)
+	expect.equality(fast, false)
+end
+
+T["request validates its arguments"] = function()
+	expect.error(function()
+		http.request({ url = URL }, nil)
+	end, "on_done")
+	expect.error(function()
+		http.request("nope", function() end)
+	end, "must be a table")
 end
 
 return T

@@ -1,8 +1,10 @@
--- The pure half of the transport: turn a request table into a curl invocation,
--- and turn the head of a `curl -i` response back into data. No process is
--- spawned here, nothing is scheduled, and no `vim.api`/`vim.fn`/`vim.notify`
--- call is made — `request()` and `stream()` (ROADMAP.md, tasks 13 and 14) sit on
--- top of these two functions and own all of the I/O.
+-- The transport: turn a request table into a curl invocation, run it, and turn
+-- the head of a `curl -i` response back into data.
+--
+-- `build` and `parse_head` are pure — no process is spawned, nothing is
+-- scheduled, and no `vim.api`/`vim.fn`/`vim.notify` call is made. `request`
+-- sits on top of the pair and owns all of the I/O; `stream()` (ROADMAP.md,
+-- task 14) will join it there.
 --
 -- Why the invocation looks the way it does:
 --
@@ -258,6 +260,149 @@ function M.parse_head(text)
 		end
 		-- A 1xx block: throw it away, headers and all, and parse the next one.
 	end
+end
+
+---@class SpacetimeSystemCompleted The shape `vim.system` reports on exit.
+---@field code integer Process exit status, or the signal number when killed.
+---@field signal? integer
+---@field stdout? string
+---@field stderr? string
+
+---Injection point for `vim.system`. Tests replace this so exit-code mapping and
+---cancellation can be exercised with no process spawned. Spelled out here
+---rather than reused from Neovim's own annotations, which lua_ls only sees when
+---the runtime files are on the workspace library path.
+---@type fun(cmd: string[], opts: table, on_exit: fun(out: SpacetimeSystemCompleted)): table
+M._system = vim.system
+
+-- The curl exit codes worth translating into something a user can act on.
+-- Everything else is reported by number, with curl's own stderr quoted, because
+-- inventing a friendly phrase for an unknown failure hides more than it helps.
+local EXIT_MESSAGES = {
+	[6] = "could not resolve host",
+	[7] = "connection refused",
+	[28] = "timed out",
+	[35] = "TLS failure",
+	[60] = "TLS failure",
+}
+
+---Turn a non-zero curl exit into a message.
+---@param code integer
+---@param stderr string|nil
+---@return string
+local function classify_exit(code, stderr)
+	local mapped = EXIT_MESSAGES[code]
+	if mapped then
+		return mapped
+	end
+	local detail = trim(stderr or "")
+	if detail == "" then
+		return ("curl exited with code %d"):format(code)
+	end
+	return ("curl exited with code %d: %s"):format(code, detail)
+end
+
+---@class SpacetimeHttpResponse
+---@field status integer
+---@field headers table<string,string> Names lower-cased.
+---@field body string Byte-exact response body.
+
+---@class SpacetimeHttpHandle
+---@field kill fun(...) Cancel the request. Idempotent; safe after completion.
+
+---Execute a buffered request.
+---
+---Exactly one of `err` and `response` is non-nil. `on_done` is
+---`vim.schedule_wrap`ped, so every layer above this one may assume main-loop
+---context and none of them has to think about fast-event restrictions again.
+---
+---Cancellation contract: `kill()` is idempotent, and once it has been called
+---`on_done` is never invoked — a cancelled request is silent. That covers a
+---handle's own late callback only; ordering *between* handles is still the job
+---of the sequence guard in `state.lua` (ROADMAP.md, task 20).
+---@param req SpacetimeHttpRequest `stream` is ignored here; use `M.stream`.
+---@param on_done fun(err: string|nil, response: SpacetimeHttpResponse|nil)
+---@return SpacetimeHttpHandle
+function M.request(req, on_done)
+	if type(req) ~= "table" then
+		error("spacetime.lib.http: request must be a table", 2)
+	end
+	if type(on_done) ~= "function" then
+		error("spacetime.lib.http: request needs an on_done callback", 2)
+	end
+
+	-- A shallow copy, so a caller that reuses its request table for a later
+	-- `stream` call gets it back unmodified. Dropping `stream` here means a
+	-- caller passing `stream = true` still gets the buffered argv rather than an
+	-- unbounded `--no-buffer` one that would never complete.
+	local spec = {}
+	for key, value in pairs(req) do
+		spec[key] = value
+	end
+	spec.stream = nil
+
+	local cmd = M.build(spec --[[@as SpacetimeHttpRequest]])
+
+	local cancelled = false
+	local proc ---@type table|nil
+
+	-- The cancel check lives *inside* the scheduled function on purpose: testing
+	-- it at `on_exit` time would leave a race where a `kill()` landing between
+	-- the exit and the scheduled turn still delivered a callback.
+	local deliver = vim.schedule_wrap(function(err, response)
+		if cancelled then
+			return
+		end
+		on_done(err, response)
+	end)
+
+	-- `cmd.stdin` is always a string — `""` when the config block is empty — and
+	-- must never be `nil`. `vim.system` opens a pipe for any truthy value, and
+	-- `""` is truthy in Lua, so it writes nothing and then closes the pipe, which
+	-- is what stops curl blocking forever on `-K -`. Passing `nil` would skip the
+	-- pipe and curl would inherit (and read) Neovim's own stdin.
+	--
+	-- No `text = true`: it rewrites `\r\n` as `\n` in the captured stdout, which
+	-- would corrupt both the head framing and the body bytes. No `opts.timeout`
+	-- either: curl's `--max-time` already bounds the request and yields the
+	-- classifiable exit 28, where `vim.system`'s timeout yields 124 and would
+	-- need a second, redundant mapping.
+	proc = M._system(cmd.argv, { stdin = cmd.stdin }, function(out)
+		if out.code ~= 0 then
+			deliver(classify_exit(out.code, out.stderr), nil)
+			return
+		end
+		local ok, head = pcall(M.parse_head, out.stdout or "")
+		if not ok then
+			-- Strip the "file:line: " that `error(msg, 2)` prepends inside
+			-- `parse_head`; the parens keep `gsub`'s count out of the arguments.
+			deliver((tostring(head):gsub("^.-:%d+: ", "")), nil)
+		elseif not head then
+			-- curl exited cleanly but never produced a complete head: a truncated
+			-- or non-HTTP response, not something the caller can parse.
+			deliver("incomplete response from server", nil)
+		else
+			deliver(nil, { status = head.status, headers = head.headers, body = head.rest })
+		end
+	end)
+
+	return {
+		-- Written to ignore its argument, so `handle:kill()` and `handle.kill()`
+		-- both work.
+		kill = function()
+			if cancelled then
+				return
+			end
+			cancelled = true
+			if proc then
+				-- The process may already have exited, in which case libuv's
+				-- handle is closed and `kill` raises. A cancel must not.
+				pcall(function()
+					proc:kill("sigterm")
+				end)
+			end
+		end,
+	}
 end
 
 return M
