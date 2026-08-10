@@ -28,7 +28,9 @@ spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*
 spacetime-sidebar	spacetime.txt	/*spacetime-sidebar*
 spacetime-sidebar-errors	spacetime.txt	/*spacetime-sidebar-errors*
+spacetime-sidebar-expanding	spacetime.txt	/*spacetime-sidebar-expanding*
 spacetime-sidebar-keymaps	spacetime.txt	/*spacetime-sidebar-keymaps*
+spacetime-sidebar-paused	spacetime.txt	/*spacetime-sidebar-paused*
 spacetime.config	spacetime.txt	/*spacetime.config*
 spacetime.setup()	spacetime.txt	/*spacetime.setup()*
 spacetime.txt	spacetime.txt	/*spacetime.txt*

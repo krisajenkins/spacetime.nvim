@@ -31,6 +31,13 @@
 -- 5. **Expansion state lives here, not in the tree.** `ui/tree.lua` is pure and
 --    holds nothing; the set of expanded database names is this module's, and it
 --    survives a refetch, so pressing `r` does not collapse the tree.
+-- 6. **A schema is fetched once per database, and a pause is never retried.**
+--    Expanding fetches into `state`'s `schema:<db>` cache, so a second expand is
+--    a table lookup. A `paused` answer is recorded and stops any further asking
+--    until `r` clears it: a paused database answers 503 on *every* endpoint, so
+--    a node that refetched on each expand would hammer it. Nothing here probes
+--    for pauses — the status is only ever learnt from a request the user asked
+--    for.
 --
 -- Every `require` is inside a function body, matching `commands.lua`: this
 -- module is only reached by running a command, and `spacetime.commands` requires
@@ -50,6 +57,17 @@ local nodes = {}
 ---Which databases are expanded, by display name. Survives a refetch.
 ---@type table<string, boolean>
 local expanded = {}
+
+---What a schema fetch concluded, by display name.
+---
+---Nothing is recorded while a request is in flight — that is read back from
+---`state.data.inflight`, so cancelling (collapsing, `q`, a second fetch) clears
+---the loading state without this module having to sweep up after it. A success
+---leaves no entry either: the schema itself is the record, in the cache. What
+---lands here is a pause or a failure, and either one stops the node asking
+---again until `r` drops it.
+---@type table<string, { paused: boolean|nil, error: string|nil }>
+local schema_results = {}
 
 -- The connection this browsing session talks to, resolved from the buffer the
 -- user ran `:Spacetime` from rather than from our own scratch buffer.
@@ -85,18 +103,38 @@ end
 
 ---Re-derive the per-database view state from this module's own tables.
 ---
----Expanding, collapsing and a schema landing in the cache all take effect
----through this one path, which is also the seam roadmap task 25 fetches into:
----an expanded database with no cached schema renders no children at all, so
----nothing here claims to know a schema it has not asked for.
+---Expanding, collapsing, a schema landing in the cache and a fetch going out
+---all take effect through this one path: the model handed to `ui/tree.lua` is
+---derived on every render rather than mutated in place, so there is one answer
+---to "what does this node say", and it survives the list being refetched
+---underneath it.
+---
+---An expanded database with nothing known about it renders no children at all,
+---which is the honest thing to show for data nobody has fetched.
 local function sync_databases()
 	local state = require("spacetime.state")
 	for _, db in ipairs(model.databases or {}) do
 		-- A database whose `/names` request failed is expanded regardless, so its
 		-- error is on screen rather than hidden behind a collapsed marker.
 		db.expanded = expanded[db.name] == true or db.status == "error"
-		if db.schema == nil and type(db.name) == "string" and db.name ~= "" then
-			db.schema = state.cache_get(state.key("schema", db.name))
+
+		local name = type(db.name) == "string" and db.name or ""
+		-- A `/names` failure is the more fundamental one: a database we could not
+		-- even name keeps its own error rather than gaining a schema's.
+		if name ~= "" and db.status ~= "error" then
+			local key = state.key("schema", name)
+			if db.schema == nil then
+				db.schema = state.cache_get(key)
+			end
+			local result = schema_results[name]
+			if state.data.inflight[key] ~= nil then
+				db.status = "loading"
+			elseif result ~= nil and result.paused then
+				db.status = "paused"
+			elseif result ~= nil and result.error then
+				db.status = "error"
+				db.error = result.error
+			end
 		end
 	end
 end
@@ -165,25 +203,95 @@ end
 -- Expansion
 --------------------------------------------------------------------------------
 
----Expand a database node.
+---Fetch one database's schema into the cache and repaint when it lands.
 ---
----Roadmap task 25 hangs the schema fetch off here. Until then an expanded
----database with no cached schema renders no children, which is the honest thing
----to show for data nobody has fetched.
+---Three guards, and between them they are the whole of "one request per
+---database": a cached schema, a request already in flight, and a recorded
+---outcome each mean there is nothing left to ask. The last of those is what
+---makes a paused database cost exactly one request however many times it is
+---expanded, and `r` is what clears it (see |spacetime.ui.sidebar.refresh()|).
+---
+---The version negotiation and the no-retry rule belong to `lib/client.lua`: it
+---falls back v10 -> v9 only on `schema.should_fallback`, which is 4xx-only, so
+---a paused database's 503 produces one request and one `paused` error without a
+---second guard here.
+---@param name string Display name of the database.
+local function fetch_schema(name)
+	if type(name) ~= "string" or name == "" or not connection then
+		return
+	end
+
+	local state = require("spacetime.state")
+	local key = state.key("schema", name)
+	if state.cache_get(key) ~= nil or state.data.inflight[key] ~= nil or schema_results[name] ~= nil then
+		return
+	end
+
+	local client = require("spacetime.lib.client").new(connection)
+
+	-- Registered before the request goes out; see point 2 of the module header.
+	local handle = nil ---@type SpacetimeHttpHandle|nil
+	local seq = state.start(key, {
+		kill = function()
+			if handle then
+				handle.kill()
+			end
+		end,
+	})
+
+	handle = client:schema(name, nil, function(err, schema)
+		-- A schema that lost its token belongs to a node the user has collapsed,
+		-- closed or refreshed past; painting it now would undo what they did.
+		if not state.finish(key, seq) then
+			return
+		end
+		if err then
+			schema_results[name] = err.kind == "paused" and { paused = true } or { error = err.message }
+		elseif schema then
+			state.cache_set(key, schema)
+		end
+		M.render()
+	end)
+end
+
+---Ask for the schema of every database the user has expanded.
+---
+---Called after a list arrives and after a cached one renders, so an expanded
+---node ends up showing what it claims to even though the list it hangs off was
+---replaced underneath it. Cheap by construction: `fetch_schema` is guarded, so
+---the already-cached databases put nothing on the wire.
+local function fetch_expanded_schemas()
+	for _, db in ipairs(model.databases or {}) do
+		if type(db.name) == "string" and expanded[db.name] then
+			fetch_schema(db.name)
+		end
+	end
+end
+
+---Expand a database node, fetching its schema if we do not already have it.
 ---@param name string Display name, as `node.database` reports it.
 function M.expand(name)
 	if type(name) ~= "string" or name == "" then
 		return
 	end
 	expanded[name] = true
+	fetch_schema(name)
 end
 
----Collapse a database node.
+---Collapse a database node, cancelling a schema fetch nobody is waiting for.
+---
+---`state.cancel` kills the handle *and* burns the key's token, so a response
+---already on the wire is dropped rather than painted under a node the user has
+---just closed.
 ---@param name string
 function M.collapse(name)
-	if type(name) == "string" then
-		expanded[name] = nil
+	if type(name) ~= "string" or name == "" then
+		return
 	end
+	expanded[name] = nil
+
+	local state = require("spacetime.state")
+	state.cancel(state.key("schema", name))
 end
 
 ---Expand the database the project config named, if the list contains it.
@@ -291,6 +399,7 @@ local function fetch()
 			state.cache_set(key, databases)
 			expand_project_database(databases)
 			set_databases(databases)
+			fetch_expanded_schemas()
 		else
 			model.status = "error"
 			model.error = err and err.message or "could not list databases"
@@ -353,6 +462,7 @@ function M.open(opts)
 	if type(cached) == "table" then
 		expand_project_database(cached)
 		set_databases(cached)
+		fetch_expanded_schemas()
 		M.render()
 	else
 		fetch()
@@ -364,12 +474,18 @@ end
 ---Refetch the database list, cache and all. What `r` does.
 ---
 ---On a database node the database's own cache goes too — a `rows:` key embeds
----its database, so refreshing it has to drop its dependents.
+---its database, so refreshing it has to drop its dependents — and so does what
+---the last schema request concluded. That is the whole of the retry story for a
+---paused database: it is never asked again on its own, and `r` is how you ask
+---once it has woken up. The list fetch that follows re-requests the schema of
+---everything still expanded.
 function M.refresh()
 	local state = require("spacetime.state")
 
 	local node = M.node_under_cursor()
 	if node and node.database then
+		state.cancel(state.key("schema", node.database))
+		schema_results[node.database] = nil
 		state.cache_invalidate_db(node.database)
 	end
 	state.cache_invalidate(databases_key())
@@ -465,8 +581,6 @@ function M.select()
 	end
 
 	if node.kind == "table" or node.kind == "view" or node.kind == "system_table" then
-		-- Unreachable until roadmap task 25 fetches a schema, because a database
-		-- with no schema renders no children to put the cursor on.
 		require("spacetime.logger").warn(
 			("opening %s is not implemented yet (roadmap task 27)"):format(node.label or "this node")
 		)

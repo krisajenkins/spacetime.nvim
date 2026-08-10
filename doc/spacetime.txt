@@ -21,8 +21,9 @@ The plugin is still early: the browsing interface is under construction. The
 full command set is defined and completes its arguments, but several commands
 are placeholders that say so when you run them — see |spacetime-commands|.
 What works today is connection resolution (|:SpacetimeStatus|) and the browser
-itself (|:Spacetime|): the window layout, and a sidebar listing your
-databases. Expanding a database to see its tables is the next piece.
+itself (|:Spacetime|): the window layout, and a sidebar listing your databases
+and the tables and views inside them. Opening a table to see its rows is the
+next piece.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -177,6 +178,8 @@ tokens in that file are never touched by completion.
     names a `database`, that database is expanded for you, so running
     |:Spacetime| inside a module repository lands where you meant.
 
+    Expanding a database fetches its schema; see |spacetime-sidebar|.
+
     Every failure — an unreachable server, a rejected token, a configuration
     that will not resolve — is written into the sidebar as text. The command
     never raises and never shows you a stack trace.
@@ -268,6 +271,27 @@ The sidebar lists the databases your identity owns, one per line, each with a
 marker: `▸` collapsed, `▾` expanded, `⏸` paused. Its 'filetype' is
 `spacetimetree`, so you can hang your own autocommands or mappings off it.
 
+EXPANDING A DATABASE                              *spacetime-sidebar-expanding*
+
+`<CR>` on a database fetches its schema and lists what is inside it: your
+tables first, then your views, then SpacetimeDB's own `st_*` system tables.
+Each group is in canonical-name order. A table or view is labelled with the
+name you wrote it under (`ledgerEntry`), not its SQL name (`ledger_entry`).
+
+The schema is cached per database for the session, so expanding the same
+database again is instant and puts nothing on the wire. `r` is the only expiry
+the cache has.
+
+While the request is out the node reads `loading…`; collapsing it, or closing
+the browser, cancels the request.
+
+                                                     *spacetime-sidebar-paused*
+A paused database answers `503` on every endpoint, so it is asked exactly
+once. The answer is remembered, the node is marked `⏸`, and expanding it again
+asks nothing — pressing `r` on it is how you ask again once it has woken up.
+Nothing is ever probed at startup: a pause is only ever discovered from a
+request you asked for.
+
 KEYMAPS                                            *spacetime-sidebar-keymaps*
 
 All of these are buffer-local to the sidebar; nothing is mapped globally. >
@@ -286,8 +310,9 @@ the mappings are built from, so the two cannot disagree.
 system clipboard.
 
 `r` drops the cached database list and fetches it again. On a database node it
-also drops that database's own cached schema and rows — the cache has no
-expiry, so this is how you ask for fresh data.
+also drops that database's own cached schema and rows, and whatever the last
+schema request concluded — the cache has no expiry, so this is how you ask for
+fresh data. A database still expanded is refilled by the same keystroke.
 
 `q` closes both windows *and* cancels every request still in flight, so a
 response cannot arrive after you have closed the browser. The content window

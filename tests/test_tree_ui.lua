@@ -27,11 +27,19 @@
 -- keeps the child alive (the tests/CLAUDE.md gotcha) *and* what the user wants.
 local child, new_set = require("tests.helpers.child")()
 local expect = MiniTest.expect
+local read = require("tests.helpers.fixtures").read
 
 -- Two databases, each with one name. `identity_hex` strips a leading `0x`, so
 -- these are plain hex-ish strings; the shape with `__identity__` is the one the
 -- client documents as unverified-but-accepted.
+--
+-- `MINI_SCHEMA` is the smallest thing `lib/schema.parse` accepts — a v9 document
+-- with one table — so the cases that are not *about* the schema still get a
+-- child line out of an expansion without carrying the 95 KB live fixture. The
+-- cases that are about it install the fixture through `SCHEMA_RESPONDER`.
 local DEFAULT_RESPONDER = [[
+	MINI_SCHEMA = '{"typespace":{"types":[]},"tables":[{"name":"widget"}]}'
+
 	RESPONDER = function(url)
 		if url:find('/v1/identity/', 1, true) then
 			return { status = 200, body = '{"identities":[{"__identity__":"aa11"},{"__identity__":"bb22"}]}' }
@@ -39,7 +47,19 @@ local DEFAULT_RESPONDER = [[
 		local db = url:match('/v1/database/(.-)/names')
 		if db == 'aa11' then return { status = 200, body = '{"names":["spacegym"]}' } end
 		if db == 'bb22' then return { status = 200, body = '{"names":["spacetutorial"]}' } end
+		if url:find('/schema?', 1, true) then return { status = 200, body = MINI_SCHEMA } end
 		return { status = 404, body = 'no such database' }
+	end
+
+	-- Answer schema requests with `reply`, leaving the rest of the responder
+	-- alone: a case that cares about one endpoint should have to spell out only
+	-- that endpoint.
+	SCHEMA_RESPONDER = function(reply)
+		local base = RESPONDER
+		RESPONDER = function(url)
+			if url:find('/schema?', 1, true) then return reply(url) end
+			return base(url)
+		end
 	end
 ]]
 
@@ -103,6 +123,14 @@ end
 ---@return string[]
 local function sidebar_lines()
 	return buffer_lines("spacetime://sidebar")
+end
+
+---How many schema requests the stub has been asked for.
+---@return integer
+local function schema_requests()
+	return child.lua_get([[
+		#vim.tbl_filter(function(url) return url:find('/schema?', 1, true) ~= nil end, REQUESTS)
+	]])
 end
 
 --------------------------------------------------------------------------------
@@ -190,16 +218,17 @@ T["<CR> expands and collapses the database under the cursor"] = function()
 	child.lua([[ vim.cmd('Spacetime') ]])
 
 	child.type_keys("<CR>")
-	expect.equality(sidebar_lines(), { "▾ spacegym", "▸ spacetutorial" })
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
 
 	child.type_keys("<CR>")
 	expect.equality(sidebar_lines(), { "▸ spacegym", "▸ spacetutorial" })
 
-	-- `o` is the same action, and expansion at this task fetches nothing: the
-	-- schema request belongs to roadmap task 25.
+	-- `o` is the same action.
 	child.type_keys("o")
-	expect.equality(sidebar_lines(), { "▾ spacegym", "▸ spacetutorial" })
-	expect.equality(child.lua_get([[#REQUESTS]]), 3)
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+
+	-- One request for the list, one per database for its names, one schema.
+	expect.equality(child.lua_get([[#REQUESTS]]), 4)
 end
 
 T["a project config naming a database expands straight to it"] = function()
@@ -212,7 +241,249 @@ T["a project config naming a database expands straight to it"] = function()
 
 	child.lua([[ vim.cmd('Spacetime') ]])
 
-	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial" })
+	-- Expanded *and* filled in: landing on the database means seeing its tables.
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    widget" })
+	expect.equality(schema_requests(), 1)
+end
+
+--------------------------------------------------------------------------------
+-- Schemas
+--------------------------------------------------------------------------------
+
+-- The live v10 fixture, as `<CR>` renders it: user tables first, then views,
+-- each group in `lib/schema.lua`'s canonical order but *labelled* with the
+-- source spelling the developer wrote. The module owns no `st_*` table, so the
+-- system group is empty here — the case below builds one to prove where it goes.
+local FIXTURE_LINES = {
+	"▾ spacegym",
+	"    booking",
+	"    classInstance",
+	"    classTemplate",
+	"    identity",
+	"    ledgerBalance",
+	"    ledgerEntry",
+	"    ledgerTransaction",
+	"    materializeTick",
+	"    passPack",
+	"    redemptionTick",
+	"    security",
+	"    user",
+	"    adminTemplatesView",
+	"    meView",
+	"    myBookingsView",
+	"    publicClassesView",
+	"▸ spacetutorial",
+}
+
+---Serve `body` for every schema request, whatever version it asks for.
+---@param body string
+local function serve_schema(body)
+	child.lua(
+		[[
+			local body = ...
+			SCHEMA_RESPONDER(function() return { status = 200, body = body } end)
+		]],
+		{ body }
+	)
+end
+
+T["expanding a database fetches its schema and renders it grouped"] = function()
+	serve_schema(read("schema_v10.json"))
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), FIXTURE_LINES)
+	expect.equality(schema_requests(), 1)
+	-- v10 is asked for first and answered, so nothing falls back.
+	expect.equality(child.lua_get([[REQUESTS[#REQUESTS] ]]):find("version=10", 1, true) ~= nil, true)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["expanding the same database twice issues one request"] = function()
+	serve_schema(read("schema_v10.json"))
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+	child.type_keys("<CR>")
+	child.type_keys("<CR>")
+
+	-- Collapse and expand as often as you like: the second render comes out of
+	-- the session cache, and the cache is keyed by database name.
+	expect.equality(sidebar_lines(), FIXTURE_LINES)
+	expect.equality(schema_requests(), 1)
+	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('schema', 'spacegym')).version]]), 10)
+end
+
+T["r drops the cached schema and fetches it again"] = function()
+	serve_schema(read("schema_v10.json"))
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("<CR>")
+	expect.equality(schema_requests(), 1)
+
+	child.type_keys("r")
+
+	-- Still expanded, still rendered — and asked for again, because `r` is the
+	-- only expiry the cache has.
+	expect.equality(sidebar_lines(), FIXTURE_LINES)
+	expect.equality(schema_requests(), 2)
+end
+
+T["an unanswered schema request renders the node as loading"] = function()
+	child.lua([[ SCHEMA_RESPONDER(function() return nil end) ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    loading…", "▸ spacetutorial" })
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 1)
+end
+
+T["collapsing cancels a schema fetch in flight"] = function()
+	child.lua([[ SCHEMA_RESPONDER(function() return nil end) ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+	expect.equality(child.lua_get([[KILLED]]), 0)
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▸ spacetutorial" })
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 0)
+	expect.equality(child.lua_get([[KILLED]]), 1)
+end
+
+T["a schema that lost its sequence token does not repaint the sidebar"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	-- Hold the schema response, so it can be fired after the token is burnt.
+	child.lua([[
+		PENDING = {}
+		package.loaded['spacetime.lib.http'].request = function(opts, on_done)
+			REQUESTS[#REQUESTS + 1] = opts.url
+			PENDING[#PENDING + 1] = on_done
+			return { kill = function() KILLED = KILLED + 1 end }
+		end
+	]])
+
+	child.type_keys("<CR>")
+	child.lua([[ STATE.cancel(STATE.key('schema', 'spacegym')) ]])
+	child.lua([[ PENDING[1](nil, { status = 200, headers = {}, body = ... }) ]], { read("schema_v10.json") })
+
+	-- Still the loading line the fetch started with, and nothing cached: the
+	-- stale schema was dropped, and nothing raised on the way.
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    loading…", "▸ spacetutorial" })
+	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('schema', 'spacegym')) == nil]]), true)
+end
+
+T["a v10 rejection falls back to v9"] = function()
+	child.lua(
+		[[
+			local body = ...
+			SCHEMA_RESPONDER(function(url)
+				if url:find('version=10', 1, true) then
+					return { status = 400, body = 'unsupported schema version' }
+				end
+				return { status = 200, body = body }
+			end)
+		]],
+		{ read("schema_v9.json") }
+	)
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	-- Same module, the other wire shape: v9 has no source names, so the labels
+	-- are the canonical ones.
+	local lines = sidebar_lines()
+	expect.equality({ lines[1], lines[2], lines[14], lines[18] }, {
+		"▾ spacegym",
+		"    booking",
+		"    admin_templates_view",
+		"▸ spacetutorial",
+	})
+	expect.equality(schema_requests(), 2)
+end
+
+T["system tables are grouped below the tables and the views"] = function()
+	serve_schema(table.concat({
+		'{"typespace":{"types":[]},"tables":[',
+		'{"name":"st_table"},{"name":"widget"}',
+		'],"misc_exports":[{"View":{"name":"widgets_view"}}]}',
+	}))
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), {
+		"▾ spacegym",
+		"    widget",
+		"    widgets_view",
+		"    st_table",
+		"▸ spacetutorial",
+	})
+end
+
+--------------------------------------------------------------------------------
+-- Paused databases
+--------------------------------------------------------------------------------
+
+-- A paused database answers 503 on *every* endpoint, so the one thing that must
+-- never happen is a retry loop. `lib/schema.should_fallback` is 4xx-only, so the
+-- client does not retry the version negotiation, and the sidebar remembers the
+-- pause so a second expand does not ask again either.
+T["a paused database renders ⏸ and is asked exactly once"] = function()
+	child.lua([[
+		SCHEMA_RESPONDER(function() return { status = 503, body = 'database is paused' } end)
+	]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), { "▾ spacegym ⏸", "▸ spacetutorial" })
+	expect.equality(schema_requests(), 1)
+
+	-- Collapsing and expanding again asks nothing: the pause is already known,
+	-- and hammering a sick server is exactly what this is here to prevent.
+	child.type_keys("<CR>")
+	child.type_keys("<CR>")
+	expect.equality(schema_requests(), 1)
+	expect.equality(sidebar_lines(), { "▾ spacegym ⏸", "▸ spacetutorial" })
+
+	-- No stack trace, no notification: the marker is the whole of the report.
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["r asks a paused database again, in case it has woken up"] = function()
+	child.lua([[
+		SCHEMA_RESPONDER(function() return { status = 503, body = 'database is paused' } end)
+	]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("<CR>")
+	expect.equality(schema_requests(), 1)
+
+	-- The server wakes up: back to the default responder, which answers.
+	child.lua(DEFAULT_RESPONDER)
+	child.type_keys("r")
+
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    widget", "▸ spacetutorial" })
+	expect.equality(schema_requests(), 2)
+end
+
+T["a failed schema renders as buffer text under its database"] = function()
+	child.lua([[
+		SCHEMA_RESPONDER(function() return { status = 500, body = 'schema exploded' } end)
+	]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("<CR>")
+
+	expect.equality(sidebar_lines(), {
+		"▾ spacegym",
+		"    error: HTTP 500: schema exploded",
+		"▸ spacetutorial",
+	})
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
 end
 
 --------------------------------------------------------------------------------

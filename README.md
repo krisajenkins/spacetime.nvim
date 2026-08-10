@@ -6,8 +6,8 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
 > resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`): the
-> layout, and a sidebar listing your databases. Expanding a database to see its
-> tables is the next piece.
+> layout, and a sidebar listing your databases and the tables and views inside
+> them. Opening a table to see its rows is the next piece.
 
 ## Requirements
 
@@ -101,6 +101,12 @@ request; `r` in the sidebar refetches.
 If the enclosing repository's `spacetime.json` (or `spacetime.local.json`) names
 a `database`, that database is expanded for you — run `:Spacetime` inside a
 module repo and it lands where you meant.
+
+`<CR>` on a database fetches its schema and lists its tables, then its views,
+then SpacetimeDB's own `st_*` tables. That schema is cached per database for the
+session, so expanding it again is instant and puts nothing on the wire; `r`
+drops it and fetches again. A database that is paused answers nothing, so it is
+marked `⏸` and asked exactly once — press `r` on it once it has woken up.
 
 Anything that goes wrong is written into the sidebar as text: an unreachable
 server, a rejected token, a configuration that will not resolve. You will not
