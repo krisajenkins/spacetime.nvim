@@ -87,6 +87,7 @@ in
     buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
       stdenv.cc.cc.lib
       prev.openssl
+      prev.zlib # libz.so.1, wanted by the `spacetime` CLI
     ];
 
     installPhase = ''
