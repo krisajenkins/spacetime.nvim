@@ -32,8 +32,8 @@
 -- 5. **The content buffer is shared** with the row grid and the schema view.
 --    `open` claims it through `ui/buffer.claim_content`, so a rows response still
 --    on the wire does not paint over the logs when it lands, and the render
---    applies this view's key map through `ui/keys`, which takes the grid's `s`,
---    `]p`, `y`, `Y` and `K` back off the buffer.
+--    applies this view's key map through `ui/keys`, which binds `<` and `>` and
+--    takes the grid's `s`, `]p`, `y`, `Y` and `K` back off the buffer.
 --
 -- The lines are laid out here rather than through `ui/grid.lua`: the grid has a
 -- header row this view does not want, and it truncates a cell to 40 columns,
@@ -62,8 +62,15 @@
 --    `teardown`, because a leaked `curl` outliving Neovim and a repeating timer
 --    firing at a wiped buffer are the same bug seen from two ends.
 --
--- Roadmap task 33 still owns the level filter (`<`/`>`), which re-renders from
--- the same ring buffer; `M.KEYMAPS` is the seam it plugs into.
+-- The level filter — `<` and `>` — adds one more:
+--
+-- 10. **The filter is a display rule, never a request.** `M.filter` moves
+--     `view.min_level` along `lib/logs.MINIMUMS` and calls `M.render`; nothing
+--     goes on the wire. That is not an optimisation: during a follow a refetch
+--     would restart the stream, and the lines the user was reading would be
+--     replaced by whatever the server sends next. The corollary is that
+--     `M.MAX_ENTRIES` caps what is *kept*, not what is shown, so lowering the
+--     minimum brings back every line that was merely hidden.
 
 local M = {}
 
@@ -86,17 +93,41 @@ M.FLUSH_MS = 100
 ---How many entries a follow keeps. The oldest go first.
 M.MAX_ENTRIES = 5000
 
+---The minimum level a fresh view starts at: the least severe one, which hides
+---nothing.
+---
+---`lib/logs.rank` sorts a level it does not recognise as `Info`, and `Info`
+---outranks this, so a level the server invented is visible by default too.
+M.DEFAULT_MIN_LEVEL = "Trace"
+
 ---Every key the content window binds while it is showing logs.
 ---
----Deliberately none until roadmap task 33 adds `<` and `>` for the level
----filter. The table is still here, and still applied on every render, because
----applying it is what *unbinds* the row grid's keys — see point 5 of the module
----header.
+---Applied on every render, which is also what *unbinds* the row grid's keys —
+---see point 5 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = {}
+M.KEYMAPS = {
+	{
+		keys = { ">" },
+		desc = "show only more severe log levels",
+		action = function()
+			M.filter(1)
+		end,
+	},
+	{
+		keys = { "<" },
+		desc = "show less severe log levels too",
+		action = function()
+			M.filter(-1)
+		end,
+	},
+}
 
 local LOADING = "loading…"
 local NO_ENTRIES = "(no log entries)"
+---Shown when there are entries, but the filter is hiding all of them: an empty
+---view and a filtered-to-nothing view are different problems, and only one of
+---them is fixed by pressing `<`.
+local NO_ENTRIES_AT_LEVEL = "(no log entries at %s or above — press < to widen)"
 local UNKNOWN_ERROR = "unknown error"
 local NO_TIMESTAMP = "?"
 
@@ -132,6 +163,7 @@ local LEVEL_HL = {
 ---@field status "loading"|"ready"|"error"
 ---@field error? string Set when `status == "error"`.
 ---@field entries spacetime.LogEntry[] In arrival order, oldest first. Capped at `M.MAX_ENTRIES`.
+---@field min_level string Least severe level shown. One of `lib/logs.MINIMUMS`.
 
 ---What is on screen, or being fetched onto it. `nil` before the first open.
 ---@type SpacetimeLogsView|nil
@@ -193,19 +225,30 @@ end
 ---`num_lines` long is almost certainly cut off at the top, and the number that
 ---produced it is the one to raise.
 ---
+---The minimum level is always named, even at the default: it is the only thing
+---on screen that says a level filter exists at all, and `<`/`>` are otherwise
+---undiscoverable. When it is hiding something the count says so too — `3 of 412
+---lines` — because a bare `3 lines` would read as "that is all the server sent".
+---
 ---A follow adds a fourth field, and it is the only thing on screen that says
 ---whether lines are still coming: `following` while the stream is live, `stopped`
 ---once `:SpacetimeLogsStop` — or the server — has ended it. A static view says
 ---neither, because for it the question does not arise.
 ---@param current SpacetimeLogsView
----@param count integer Entries rendered.
+---@param shown integer Entries rendered.
+---@param total integer Entries kept, filtered and unfiltered alike.
 ---@return string
-local function badge_text(current, count)
-	local badge = ("%s · %d line%s · asked for %d"):format(
+local function badge_text(current, shown, total)
+	local count = ("%d line%s"):format(total, total == 1 and "" or "s")
+	if shown ~= total then
+		count = ("%d of %d lines"):format(shown, total)
+	end
+
+	local badge = ("%s · %s · asked for %d · level ≥ %s"):format(
 		current.database,
 		count,
-		count == 1 and "" or "s",
-		current.num_lines
+		current.num_lines,
+		current.min_level
 	)
 	if current.follow then
 		badge = badge .. (current.following and " · following" or " · stopped")
@@ -230,21 +273,26 @@ local function build(current)
 
 	local grid = require("spacetime.ui.grid")
 	local value = require("spacetime.lib.value")
+	local lib_logs = require("spacetime.lib.logs")
 	local entries = current.entries
 
 	-- Two passes: the columns are padded to their widest entry, and nothing is
 	-- truncated, so the widths cannot be known before every entry has been seen.
+	-- The filter is applied here and nowhere else — `current.entries` keeps every
+	-- line, so `<` can bring the hidden ones straight back. See point 10.
 	local cells = {} ---@type { level: string, stamp: string, message: string }[]
 	local level_width, stamp_width = 0, 0
-	for i, entry in ipairs(entries) do
-		local level = grid.sanitise(entry.level or "")
-		-- `lib/value.timestamp` is the renderer a Timestamp *column* goes through,
-		-- so a log stamp and a cell read alike. An entry whose `ts` was unreadable
-		-- still shows its message: losing that would be the worse failure.
-		local stamp = value.timestamp(entry.ts) or NO_TIMESTAMP
-		cells[i] = { level = level, stamp = stamp, message = grid.sanitise(entry.message or "") }
-		level_width = math.max(level_width, grid.display_width(level))
-		stamp_width = math.max(stamp_width, grid.display_width(stamp))
+	for _, entry in ipairs(entries) do
+		if lib_logs.at_least(entry.level, current.min_level) then
+			local level = grid.sanitise(entry.level or "")
+			-- `lib/value.timestamp` is the renderer a Timestamp *column* goes through,
+			-- so a log stamp and a cell read alike. An entry whose `ts` was unreadable
+			-- still shows its message: losing that would be the worse failure.
+			local stamp = value.timestamp(entry.ts) or NO_TIMESTAMP
+			cells[#cells + 1] = { level = level, stamp = stamp, message = grid.sanitise(entry.message or "") }
+			level_width = math.max(level_width, grid.display_width(level))
+			stamp_width = math.max(stamp_width, grid.display_width(stamp))
+		end
 	end
 
 	local lines, spans = {}, {}
@@ -261,14 +309,16 @@ local function build(current)
 			}
 		end
 	end
-	if #lines == 0 then
-		-- An empty buffer reads as a rendering failure; say so instead.
-		lines[1] = NO_ENTRIES
+	local shown = #lines
+	if shown == 0 then
+		-- An empty buffer reads as a rendering failure; say so instead — and say
+		-- which of the two emptinesses this is.
+		lines[1] = #entries == 0 and NO_ENTRIES or NO_ENTRIES_AT_LEVEL:format(current.min_level)
 	end
 
 	-- The badge takes line one, so every span below it moves down by one. Done
 	-- here, once, as in `ui/rows.lua`.
-	local badge = badge_text(current, #entries)
+	local badge = badge_text(current, shown, #entries)
 	table.insert(lines, 1, badge)
 	for _, span in ipairs(spans) do
 		span.line = span.line + 1
@@ -607,12 +657,42 @@ function M.open(request)
 		following = false,
 		status = "loading",
 		entries = {},
+		-- A fresh view starts unfiltered. Carrying the last view's minimum over
+		-- would mean a `:SpacetimeLogs` that quietly hid most of another
+		-- database's log, with only the badge to say why.
+		min_level = M.DEFAULT_MIN_LEVEL,
 	}
 
 	require("spacetime.ui.buffer").claim_content(M.OWNER)
 
 	M.render()
 	fetch(view)
+end
+
+---Move the minimum displayed level, and repaint from what is already in memory.
+---
+---What `>` (one step more severe) and `<` (one step less severe) do. **No
+---request goes out** — see point 10 of the module header — so the same entries
+---are simply laid out again, and a follow keeps streaming into the same ring
+---buffer throughout. New lines respect the new minimum because the filter lives
+---in the render, not in the append.
+---
+---Clamped at both ends by `lib/logs.step_minimum`: `>` on `Error` and `<` on
+---`Trace` stop rather than wrap, and stop silently — a keystroke that has
+---nothing left to do is not an error, exactly as `]p` on the last page is not.
+---@param steps integer Positive is more severe. `>` is `1`, `<` is `-1`.
+function M.filter(steps)
+	local current = view
+	if current == nil or type(steps) ~= "number" or steps == 0 then
+		return
+	end
+
+	local minimum = require("spacetime.lib.logs").step_minimum(current.min_level, steps)
+	if minimum == current.min_level then
+		return
+	end
+	current.min_level = minimum
+	M.render()
 end
 
 ---Stop following, keeping what has already been shown.

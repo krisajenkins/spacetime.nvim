@@ -187,6 +187,9 @@ table you open.
 | `Y`   | Yank the whole row as JSON                               |
 | `K`   | Float the whole row, every column untruncated            |
 
+While the content window is showing logs instead, it binds `<` and `>` — the
+level filter, see [`:SpacetimeLogs`](#spacetimelogs) — and none of the above.
+
 ### `:SpacetimeRows`
 
 `:SpacetimeRows spacegym.member` opens the browser and puts that table's rows in
@@ -252,7 +255,7 @@ content window: the last `log_lines` entries, oldest first, as level, timestamp
 and message.
 
 ```
-spacegym · 11 lines · asked for 200
+spacegym · 11 lines · asked for 200 · level ≥ Trace
 Info  2026-08-09T08:43:53.970840Z  Repairing stale view backing tables
 Info  2026-08-09T08:43:53.972374Z  Disconnecting all users
 ```
@@ -271,13 +274,36 @@ Nothing here is cached: a log tail is stale the moment it lands, so every
 `:SpacetimeLogs` is a fresh request, and running it for a second database
 cancels the first.
 
+#### The level filter — `<` and `>`
+
+In the log window, `>` raises the minimum level shown by one step and `<` lowers
+it, through `Trace → Debug → Info → Warn → Error`. The badge always says where
+you are, and says how much is hidden when the filter is hiding anything:
+
+```
+spacegym · 3 of 412 lines · asked for 200 · level ≥ Warn
+```
+
+- **Neither key sends a request.** The filter is a display rule over the lines
+  already in memory, so the 5000 the view keeps are all still there: `<` brings
+  back everything it was hiding, and during a follow the stream is never
+  restarted or re-requested.
+- **Both keys stop at the ends rather than wrapping.** `>` on `Error` and `<` on
+  `Trace` do nothing, so leaning on `>` cannot tip over and bury the line you
+  were narrowing in on. There is no `Panic` step: a panic outranks an error, so
+  it is kept by `Error` anyway.
+- While following, lines arriving after you set the filter respect it too.
+- A level the server invented (`Verbose`, say) is shown under its own name and
+  ranked as `Info`, so it stays visible at the default.
+- The filter is per view: opening any other logs starts at `Trace` again.
+
 ### `:SpacetimeLogs!` — follow
 
 The bang keeps the connection open and appends lines as the server produces
 them. The badge says which of the two you are looking at:
 
 ```
-spacegym · 412 lines · asked for 200 · following
+spacegym · 412 lines · asked for 200 · level ≥ Trace · following
 ```
 
 - The buffer is written on a 100 ms clock rather than once per line, so a module

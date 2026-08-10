@@ -104,6 +104,28 @@ T["the canonical levels are ordered most severe first"] = function()
 	expect.equality(logs.at_least("Panic", "Error"), true)
 end
 
+T["the filter's minimums are the levels least severe first, without Panic"] = function()
+	expect.equality(logs.MINIMUMS, { "Trace", "Debug", "Info", "Warn", "Error" })
+	-- A `Panic` floor would only ever hide errors, since a panic outranks one.
+	expect.equality(logs.at_least("Panic", "Error"), true)
+end
+
+T["stepping the minimum clamps at both ends rather than wrapping"] = function()
+	expect.equality(logs.step_minimum("Trace", 1), "Debug")
+	expect.equality(logs.step_minimum("Info", -1), "Debug")
+	expect.equality(logs.step_minimum("info", 2), "Error")
+
+	expect.equality(logs.step_minimum("Error", 1), "Error")
+	expect.equality(logs.step_minimum("Error", 99), "Error")
+	expect.equality(logs.step_minimum("Trace", -1), "Trace")
+	expect.equality(logs.step_minimum("Trace", -99), "Trace")
+
+	-- A minimum this ordering does not contain starts from the one that hides
+	-- nothing, rather than from nowhere.
+	expect.equality(logs.step_minimum("Panic", 0), "Trace")
+	expect.equality(logs.step_minimum(nil, 1), "Debug")
+end
+
 T["level names are matched case-insensitively"] = function()
 	expect.equality(parsed('{"level":"warn","message":"m"}').level, "Warn")
 	expect.equality(parsed('{"level":"WARN","message":"m"}').level, "Warn")

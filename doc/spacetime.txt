@@ -253,7 +253,7 @@ tokens in that file are never touched by completion.
     last |spacetime-opt-log_lines| entries, oldest first, as level, timestamp
     and message. >
 
-    spacegym · 11 lines · asked for 200
+    spacegym · 11 lines · asked for 200 · level ≥ Trace
     Info  2026-08-09T08:43:53.970840Z  Repairing stale view backing tables
     Info  2026-08-09T08:43:53.972374Z  Disconnecting all users
 <
@@ -272,11 +272,35 @@ tokens in that file are never touched by completion.
     every |:SpacetimeLogs| makes a request, and running it for a second
     database cancels the first.
 
+    In the log window, two keys narrow and widen what is shown: >
+
+    >           raise the minimum level one step
+    <           lower the minimum level one step
+<
+    The steps are `Trace`, `Debug`, `Info`, `Warn`, `Error`, and the badge
+    always says where you are — it also says how many lines the filter is
+    hiding: >
+
+    spacegym · 3 of 412 lines · asked for 200 · level ≥ Warn
+<
+    Neither key sends a request. The filter is a display rule over the lines
+    already in memory, so the 5000 the view keeps are all still there and `<`
+    brings back everything it was hiding; while following, the stream is
+    neither restarted nor re-requested, and lines arriving afterwards respect
+    the filter as they land.
+
+    Both keys stop at the ends rather than wrapping: `>` on `Error` and `<` on
+    `Trace` do nothing, so leaning on `>` cannot tip over and bury the line you
+    were narrowing in on. There is no `Panic` step — a panic outranks an error,
+    so `Error` keeps it anyway. A level the server invented is shown under its
+    own name and ranked as `Info`, so it stays visible at the default. Opening
+    any other logs starts at `Trace` again.
+
     The bang means follow: the connection stays open and lines are appended as
     the server produces them. The badge says which of the two you have, and
     reads `· following` while the stream is live: >
 
-    spacegym · 412 lines · asked for 200 · following
+    spacegym · 412 lines · asked for 200 · level ≥ Trace · following
 <
     Three properties of the follow are worth knowing:
 
@@ -505,8 +529,9 @@ These are buffer-local to the content window while it is showing a grid. >
 `y`, `Y` and `K` do nothing but say so when the cursor is on the badge, on the
 header or on the `(no rows)` marker: there is no row there to act on.
 
-The content window is shared: |:SpacetimeSchema| paints into the same buffer,
-so these keys are taken off it while a schema is showing and put back with the
+The content window is shared: |:SpacetimeSchema| and |:SpacetimeLogs| paint
+into the same buffer, so these keys are taken off it while a schema or a log is
+showing — the log view binds `<` and `>` of its own — and put back with the
 next table you open. A `]p` left behind could otherwise page a grid that is no
 longer on screen.
 

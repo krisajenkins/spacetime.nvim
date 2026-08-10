@@ -26,6 +26,19 @@ local LOGS = read("logs.ndjson")
 local ONE_ROW =
 	'[{"schema":{"elements":[{"name":{"some":"id"},"algebraic_type":{"String":[]}}]},"rows":[["x"]],"total_duration_micros":1}]'
 
+---One line per level, plus one level no server has: the committed fixture is
+---eleven `Info` lines, which cannot exercise a filter at all. `Verbose` is the
+---invented one — `lib/logs` keeps the name verbatim and ranks it as `Info`.
+local MIXED = table.concat({
+	'{"level":"Trace","ts":"1754728000000000","message":"trace line"}',
+	'{"level":"Debug","ts":"1754728000000001","message":"debug line"}',
+	'{"level":"Info","ts":"1754728000000002","message":"info line"}',
+	'{"level":"Verbose","ts":"1754728000000003","message":"verbose line"}',
+	'{"level":"Warn","ts":"1754728000000004","message":"warn line"}',
+	'{"level":"Error","ts":"1754728000000005","message":"error line"}',
+	'{"level":"Panic","ts":"1754728000000006","message":"panic line"}',
+}, "\n")
+
 local T = new_set({
 	pre_case = function(c)
 		c.lua(
@@ -112,6 +125,28 @@ local function streamed(index)
 	return child.lua_get([[STREAMED[...] ]], { index or 1 })
 end
 
+---How many log requests have gone out. The level filter must never add one.
+---@return integer
+local function request_count()
+	return child.lua_get([[#STREAMED]])
+end
+
+---Focus the content window, which is where the log view's keys are bound.
+local function focus_content()
+	child.lua([[ vim.api.nvim_set_current_win(B.window_showing(B.find('spacetime://content'))) ]])
+end
+
+---The trailing word of every rendered log line: `trace`, `info`, `warn`… in
+---display order, with the level and timestamp columns dropped.
+---@return string[]
+local function messages()
+	local out = {}
+	for _, line in ipairs(entry_lines()) do
+		out[#out + 1] = line:match("(%S+) line$") or line
+	end
+	return out
+end
+
 --------------------------------------------------------------------------------
 -- Rendering
 --------------------------------------------------------------------------------
@@ -120,7 +155,7 @@ T["the fixture's eleven lines all render, level first"] = function()
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
 
 	local lines = content_lines()
-	expect.equality(lines[1], "spacegym · 11 lines · asked for 200")
+	expect.equality(lines[1], "spacegym · 11 lines · asked for 200 · level ≥ Trace")
 	expect.equality(#entry_lines(), 11)
 
 	-- Level, then the timestamp `lib/value` renders a Timestamp column with, then
@@ -173,7 +208,7 @@ T["a malformed line is skipped without aborting the render"] = function()
 	child.lua([[ expect.no_error(function() vim.cmd('SpacetimeLogs spacegym') end) ]])
 
 	expect.equality(#entry_lines(), 11)
-	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 200")
+	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 200 · level ≥ Trace")
 	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
 end
 
@@ -182,7 +217,7 @@ T["a database with nothing in its log says so rather than rendering nothing"] = 
 
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
 
-	expect.equality(content_lines(), { "spacegym · 0 lines · asked for 200", "(no log entries)" })
+	expect.equality(content_lines(), { "spacegym · 0 lines · asked for 200 · level ≥ Trace", "(no log entries)" })
 end
 
 --------------------------------------------------------------------------------
@@ -202,7 +237,7 @@ T["log_lines is what reaches the query string"] = function()
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
 
 	expect.equality(streamed():find("num_lines=5&follow=false", 1, true) ~= nil, true)
-	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 5")
+	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 5 · level ≥ Trace")
 end
 
 T["a log_lines that is not a whole count of lines is rejected by setup()"] = function()
@@ -220,7 +255,7 @@ T["the database may be left off, and comes from the resolved connection"] = func
 	child.lua([[ vim.cmd('SpacetimeLogs') ]])
 
 	expect.equality(streamed():find("/v1/database/spacegym/logs?", 1, true) ~= nil, true)
-	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 200")
+	expect.equality(content_lines()[1], "spacegym · 11 lines · asked for 200 · level ≥ Trace")
 end
 
 T["a second database cancels the first and leaves one request in flight"] = function()
@@ -270,6 +305,130 @@ T["with no database anywhere the command says which to write"] = function()
 end
 
 --------------------------------------------------------------------------------
+-- The level filter
+--------------------------------------------------------------------------------
+
+-- The point of the whole feature: the ring buffer is the data, so narrowing and
+-- widening are both a re-layout of what is already in memory. A request here
+-- would be wrong twice over — it costs a round trip, and during a follow it
+-- would restart the stream under the user.
+T["> raises the minimum level and < brings the hidden lines back, with no new request"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+	expect.equality(messages(), { "trace", "debug", "info", "verbose", "warn", "error", "panic" })
+	expect.equality(request_count(), 1)
+
+	child.type_keys(">")
+	expect.equality(messages(), { "debug", "info", "verbose", "warn", "error", "panic" })
+
+	child.type_keys(">")
+	child.type_keys(">")
+	expect.equality(messages(), { "warn", "error", "panic" })
+
+	-- Every hidden line is still *kept* — the cap and the filter are different
+	-- things — so widening brings all four back without asking for them again.
+	child.type_keys("<")
+	expect.equality(messages(), { "info", "verbose", "warn", "error", "panic" })
+	child.type_keys("<")
+	child.type_keys("<")
+	expect.equality(messages(), { "trace", "debug", "info", "verbose", "warn", "error", "panic" })
+
+	-- The whole exchange put nothing on the wire.
+	expect.equality(request_count(), 1)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["the badge names the minimum, and says how many lines it is hiding"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+	-- Named even when it is hiding nothing: it is the only thing on screen that
+	-- says a level filter exists.
+	expect.equality(content_lines()[1], "spacegym · 7 lines · asked for 200 · level ≥ Trace")
+
+	child.type_keys(">")
+	expect.equality(content_lines()[1], "spacegym · 6 of 7 lines · asked for 200 · level ≥ Debug")
+
+	child.type_keys(">")
+	child.type_keys(">")
+	child.type_keys(">")
+	expect.equality(content_lines()[1], "spacegym · 2 of 7 lines · asked for 200 · level ≥ Error")
+end
+
+-- `lib/logs.rank` sorts a level it does not recognise as `Info`, so the one
+-- thing a user must not lose is a line whose level the server invented.
+T["a level the server invented stays visible at the default, and sorts as Info"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+	expect.equality(vim.tbl_contains(messages(), "verbose"), true)
+	-- Rendered under its own name, not renamed to `Info`.
+	expect.equality(entry_lines()[4]:sub(1, 7), "Verbose")
+
+	-- Visible at `Info`, which it ranks as…
+	child.type_keys(">")
+	child.type_keys(">")
+	expect.equality(vim.tbl_contains(messages(), "verbose"), true)
+	-- …and gone at `Warn`, which it does not.
+	child.type_keys(">")
+	expect.equality(vim.tbl_contains(messages(), "verbose"), false)
+end
+
+-- Clamping, not wrapping: `>` held down must not tip over from `Error` back to
+-- `Trace` and bury what the user was narrowing in on.
+T["> at the top and < at the bottom stop rather than wrapping round"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+
+	for _ = 1, 3 do
+		child.type_keys("<")
+	end
+	expect.equality(content_lines()[1]:find("level ≥ Trace", 1, true) ~= nil, true)
+	expect.equality(#messages(), 7)
+
+	for _ = 1, 10 do
+		child.type_keys(">")
+	end
+	-- `Error`, not `Panic`: a floor above `Error` would only ever hide errors,
+	-- since a panic outranks one anyway.
+	expect.equality(content_lines()[1]:find("level ≥ Error", 1, true) ~= nil, true)
+	expect.equality(messages(), { "error", "panic" })
+
+	expect.equality(request_count(), 1)
+end
+
+T["a filter that hides everything says so, and says which key widens it"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]]) -- the eleven-line `Info` fixture
+	focus_content()
+	for _ = 1, 4 do
+		child.type_keys(">")
+	end
+
+	expect.equality(content_lines(), {
+		"spacegym · 0 of 11 lines · asked for 200 · level ≥ Error",
+		"(no log entries at Error or above — press < to widen)",
+	})
+	-- Distinct from the marker a genuinely empty log gets: only one of the two is
+	-- fixed by pressing `<`.
+	expect.equality(request_count(), 1)
+end
+
+T["a second open starts unfiltered again"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+	child.type_keys(">")
+	child.type_keys(">")
+	expect.equality(content_lines()[1]:find("level ≥ Info", 1, true) ~= nil, true)
+
+	child.lua([[ vim.cmd('SpacetimeLogs archive') ]])
+
+	expect.equality(content_lines()[1], "archive · 7 lines · asked for 200 · level ≥ Trace")
+end
+
+--------------------------------------------------------------------------------
 -- Sharing the content buffer
 --------------------------------------------------------------------------------
 
@@ -295,9 +454,10 @@ T["switching to the logs and back leaves no stale keymaps"] = function()
 	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
-	-- Not one of the grid's keys is left on the buffer: a stale `]p` must not page
-	-- a grid that is no longer displayed.
-	expect.equality(content_keys(), {})
+	-- The log view's own two keys, and not one of the grid's: a stale `]p` must
+	-- not page a grid that is no longer displayed. Neovim reports a `<` mapping's
+	-- left-hand side as `<lt>`, which is the same key.
+	expect.equality(content_keys(), { "<lt>", ">" })
 	expect.equality(#entry_lines(), 11)
 
 	-- And going back to the grid binds them again, over the logs.

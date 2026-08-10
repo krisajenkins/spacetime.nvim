@@ -41,6 +41,18 @@ local M = {}
 ---Canonical level names, most severe first.
 M.LEVELS = { "Panic", "Error", "Warn", "Info", "Debug", "Trace" }
 
+---The minimum levels a view's level filter steps through, least severe first.
+---
+---`M.LEVELS` reversed, less `Panic`: a floor of `Error` already keeps panics —
+---they outrank it — so a sixth step would do nothing but hide the errors, which
+---is not a view anybody wants.
+M.MINIMUMS = {}
+for i = #M.LEVELS, 1, -1 do
+	if M.LEVELS[i] ~= "Panic" then
+		M.MINIMUMS[#M.MINIMUMS + 1] = M.LEVELS[i]
+	end
+end
+
 -- Upstream's own severity numbers (`Trace` 0 … `Panic` 5), so an ordering
 -- agreed here matches one computed server-side.
 local RANK = { Trace = 0, Debug = 1, Info = 2, Warn = 3, Error = 4, Panic = 5 }
@@ -68,6 +80,35 @@ end
 ---@return boolean
 function M.at_least(level, min)
 	return M.rank(level) >= M.rank(min)
+end
+
+---The minimum `steps` along `M.MINIMUMS` from `min`. Positive is more severe.
+---
+---**Clamped, not wrapped.** A step past either end answers the end it was
+---already at, so a key held down cannot jump from `Error` back round to `Trace`
+---and bury the thing the user was narrowing in on — the same reason the row
+---grid's `]p` stops on the last page rather than returning to the first.
+---
+---A `min` this ordering does not contain — `Panic`, or a level the server
+---invented — starts from the least severe minimum, which is the one that hides
+---nothing.
+---@param min string|nil
+---@param steps integer
+---@return string # Always one of `M.MINIMUMS`.
+function M.step_minimum(min, steps)
+	local index = 1
+	if type(min) == "string" then
+		for i, name in ipairs(M.MINIMUMS) do
+			if name:lower() == min:lower() then
+				index = i
+				break
+			end
+		end
+	end
+	if type(steps) ~= "number" then
+		return M.MINIMUMS[index]
+	end
+	return M.MINIMUMS[math.min(math.max(index + math.floor(steps), 1), #M.MINIMUMS)]
 end
 
 ---Days from 1970-01-01 to a proleptic Gregorian date (Hinnant's

@@ -103,6 +103,27 @@ local T = new_set({
 				end
 			end
 
+			---Deliver one line at a named level, for the filter cases.
+			function FEED_LEVEL(level, message)
+				FEED(('{"level":"%s","ts":"1754728000000000","message":"%s"}'):format(level, message))
+			end
+
+			---Whether any line of the content buffer contains `text`.
+			function SHOWING(text)
+				local bufnr = B.find('spacetime://content')
+				for _, l in ipairs(bufnr and vim.api.nvim_buf_get_lines(bufnr, 0, -1, false) or {}) do
+					if l:find(text, 1, true) then
+						return true
+					end
+				end
+				return false
+			end
+
+			---Wait until `text` is on screen.
+			function SHOWS(text, patience)
+				return vim.wait(patience, function() return SHOWING(text) end, 10)
+			end
+
 			---Lines currently in the content buffer, badge included.
 			function LINE_COUNT()
 				local bufnr = B.find('spacetime://content')
@@ -160,7 +181,7 @@ T["the badge says a follow is live, and says so as soon as lines arrive"] = func
 	child.lua([[ FEED_LINES(3) ]])
 	expect.equality(child.lua_get([[FLUSHED(3, ...)]], { PATIENCE }), true)
 
-	expect.equality(badge(), "spacegym · 3 lines · asked for 200 · following")
+	expect.equality(badge(), "spacegym · 3 lines · asked for 200 · level ≥ Trace · following")
 	expect.equality(line(2):find("Info ", 1, true), 1)
 end
 
@@ -214,7 +235,7 @@ T["the ring buffer caps at five thousand entries, dropping the oldest"] = functi
 	child.lua([[ vim.wait(200) ]])
 
 	expect.equality(child.lua_get([[LINE_COUNT()]]), 5001)
-	expect.equality(badge(), "spacegym · 5000 lines · asked for 200 · following")
+	expect.equality(badge(), "spacegym · 5000 lines · asked for 200 · level ≥ Trace · following")
 	-- The first thousand went, oldest first, and the newest is still there.
 	expect.equality(line(2):find("line 1001", 1, true) ~= nil, true)
 	expect.equality(line(5001):find("line 6000", 1, true) ~= nil, true)
@@ -254,6 +275,91 @@ T["a cursor scrolled up is left where the user put it"] = function()
 end
 
 --------------------------------------------------------------------------------
+-- The level filter, mid-follow
+--------------------------------------------------------------------------------
+
+---Focus the content window, which is where the log view's keys are bound.
+local function focus_content()
+	child.lua([[ vim.api.nvim_set_current_win(CONTENT_WIN()) ]])
+end
+
+-- The filter lives in the render, not in the append, so a line that arrives
+-- after it was set is judged by it too. Nothing about the stream changes: the
+-- same `curl` keeps running, and the ring buffer keeps everything.
+T["a line arriving during a follow respects the filter, which cost no request"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs! spacegym') ]])
+	child.lua([[ FEED_LINES(3) ]]) -- `Info`
+	expect.equality(child.lua_get([[FLUSHED(3, ...)]], { PATIENCE }), true)
+
+	focus_content()
+	for _ = 1, 3 do
+		child.type_keys(">") -- Trace → Debug → Info → Warn
+	end
+	expect.equality(badge(), "spacegym · 0 of 3 lines · asked for 200 · level ≥ Warn · following")
+	expect.equality(line(2), "(no log entries at Warn or above — press < to widen)")
+
+	-- One of each, in the same flush: only the severe one is painted.
+	child.lua([[ FEED_LEVEL('Error', 'boom') ]])
+	child.lua([[ FEED_LEVEL('Info', 'chatter') ]])
+	expect.equality(child.lua_get([[SHOWS('boom', ...)]], { PATIENCE }), true)
+	expect.equality(child.lua_get([[SHOWING('chatter')]]), false)
+	expect.equality(badge(), "spacegym · 1 of 5 lines · asked for 200 · level ≥ Warn · following")
+
+	-- Widening brings back everything that was merely hidden — the cap is on what
+	-- is kept, not on what is shown — and the stream was never touched to do it.
+	for _ = 1, 3 do
+		child.type_keys("<")
+	end
+	expect.equality(badge(), "spacegym · 5 lines · asked for 200 · level ≥ Trace · following")
+	expect.equality(child.lua_get([[SHOWING('chatter')]]), true)
+	expect.equality(child.lua_get([[#STREAMED]]), 1)
+	expect.equality(child.lua_get([[KILLED]]), 0)
+end
+
+-- The cap is on what the view *keeps*, not on what it shows, so a filter that
+-- hides everything still lets the ring buffer fill and still drops the oldest.
+T["the five thousand cap counts hidden lines too"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs! spacegym') ]])
+	focus_content()
+	for _ = 1, 3 do
+		child.type_keys(">") -- Warn: the `Info` lines below are all hidden
+	end
+
+	child.lua([[ FEED_LINES(6000) ]])
+	expect.equality(child.lua_get([[SHOWS('0 of 5000 lines', ...)]], { PATIENCE }), true)
+	-- The badge and the "nothing at this level" marker, and nothing else.
+	expect.equality(child.lua_get([[LINE_COUNT()]]), 2)
+
+	-- Widening shows the tail that was there all along: the newest 5000, oldest
+	-- first, and still no second request.
+	for _ = 1, 3 do
+		child.type_keys("<")
+	end
+	expect.equality(badge(), "spacegym · 5000 lines · asked for 200 · level ≥ Trace · following")
+	expect.equality(line(2):find("line 1001", 1, true) ~= nil, true)
+	expect.equality(line(5001):find("line 6000", 1, true) ~= nil, true)
+	expect.equality(child.lua_get([[#STREAMED]]), 1)
+end
+
+-- Filtering is a repaint, so the rule that governs every other repaint governs
+-- this one too: the cursor is pulled to the new last line only if it was on the
+-- old one.
+T["the bottom stays sticky across a filter change"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs! spacegym') ]])
+	child.lua([[ FEED_LINES(20) ]])
+	expect.equality(child.lua_get([[FLUSHED(20, ...)]], { PATIENCE }), true)
+
+	focus_content()
+	child.lua([[ vim.api.nvim_win_set_cursor(CONTENT_WIN(), { LINE_COUNT(), 0 }) ]])
+	child.type_keys(">") -- Debug: nothing is hidden yet, but the buffer is rewritten
+	expect.equality(child.lua_get([[vim.api.nvim_win_get_cursor(CONTENT_WIN())[1] ]]), 21)
+
+	child.lua([[ FEED_LEVEL('Error', 'boom') ]])
+	expect.equality(child.lua_get([[SHOWS('boom', ...)]], { PATIENCE }), true)
+	expect.equality(child.lua_get([[vim.api.nvim_win_get_cursor(CONTENT_WIN())[1] ]]), 22)
+end
+
+--------------------------------------------------------------------------------
 -- Teardown
 --------------------------------------------------------------------------------
 
@@ -266,7 +372,7 @@ T[":SpacetimeLogsStop kills the stream and stops the clock"] = function()
 
 	expect.equality(child.lua_get([[KILLED]]), 1)
 	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 0)
-	expect.equality(badge(), "spacegym · 4 lines · asked for 200 · stopped")
+	expect.equality(badge(), "spacegym · 4 lines · asked for 200 · level ≥ Trace · stopped")
 
 	-- The timer went with the handle: lines arriving after a stop paint nothing.
 	child.lua([[ WRITES = 0 ]])
@@ -342,7 +448,7 @@ T["a static open stops the follow it replaces"] = function()
 	child.lua([[ FEED_LINES(1) ]])
 	child.lua([[ ENDED(nil, { status = 200, headers = {}, body = '' }) ]])
 	child.lua([[ vim.wait(200) ]])
-	expect.equality(badge(), "spacegym · 1 line · asked for 200")
+	expect.equality(badge(), "spacegym · 1 line · asked for 200 · level ≥ Trace")
 end
 
 T[":SpacetimeLogsStop says so when nothing is running"] = function()
@@ -361,7 +467,7 @@ T["stopping before the first line still leaves a rendered view"] = function()
 
 	child.lua([[ vim.cmd('SpacetimeLogsStop') ]])
 
-	expect.equality(badge(), "spacegym · 0 lines · asked for 200 · stopped")
+	expect.equality(badge(), "spacegym · 0 lines · asked for 200 · level ≥ Trace · stopped")
 	expect.equality(line(2), "(no log entries)")
 end
 
