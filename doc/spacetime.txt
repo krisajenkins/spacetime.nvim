@@ -16,9 +16,11 @@ CONTENTS                                                   *spacetime-contents*
 
 spacetime.nvim integrates the SpacetimeDB CLI with Neovim.
 
-The plugin is still early: the browsing interface is under construction. What
-works today is connection resolution — see |:SpacetimeStatus|, which reports
-the server, identity and configuration files the plugin has settled on.
+The plugin is still early: the browsing interface is under construction. The
+full command set is defined and completes its arguments, but most commands are
+placeholders that say so when you run them — see |spacetime-commands|. What
+works today is connection resolution (|:SpacetimeStatus|) and the window
+layout (|:Spacetime|).
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -113,6 +115,84 @@ width ~
 
 ==============================================================================
 5. COMMANDS                                               *spacetime-commands*
+
+The plugin defines ten commands: >
+
+    :Spacetime                  open (or re-focus) the layout
+    :SpacetimeToggle            toggle the layout          (placeholder)
+    :SpacetimeConnect [nick]    switch server by nickname  (placeholder)
+    :SpacetimeDatabases         list your databases        (placeholder)
+    :SpacetimeTables [db]       list a database's tables   (placeholder)
+    :SpacetimeRows {tbl}        browse rows of [db.]tbl    (placeholder)
+    :SpacetimeSchema {tbl}      schema of [db.]tbl         (placeholder)
+    :SpacetimeLogs[!] [db]      show logs; ! follows them  (placeholder)
+    :SpacetimeLogsStop          stop following logs        (placeholder)
+    :SpacetimeStatus            print the resolved connection
+<
+A command marked (placeholder) exists, accepts and completes its argument, and
+reports that it is not implemented yet. It never raises an error — the feature
+has simply not landed.
+
+COMPLETION                                              *spacetime-completion*
+
+|:SpacetimeConnect| completes the server nicknames in your `cli.toml`.
+|:SpacetimeTables| and |:SpacetimeLogs| complete database names;
+|:SpacetimeRows| and |:SpacetimeSchema| complete `db.table`, offering both the
+source and the SQL spelling where they differ (`spacegym.ledgerEntry` and
+`spacegym.ledger_entry`).
+
+                                                    *spacetime-completion-cache*
+Database and table completion is served **entirely from what the plugin has
+already fetched in this session**. Pressing <Tab> never makes a network
+request: completion fires on every keystroke, and traffic you did not ask for
+is worse than a short list. The consequence is that a name the plugin has not
+seen yet does not complete — run the command once with the name typed out and
+it completes from then on.
+
+Nicknames are read from `cli.toml` on each <Tab>. That is a local file read,
+not a request, and only the `nickname` of each server block is looked at; the
+tokens in that file are never touched by completion.
+
+                                                                   *:Spacetime*
+:Spacetime
+
+    Open the SpacetimeDB browser in the current tabpage: a full-height sidebar
+    on the side given by |spacetime-opt-side|, at |spacetime-opt-width|
+    columns, and a content window beside it. The current window becomes the
+    content window; no new tabpage is created. Focus is left on the sidebar.
+
+    Idempotent: running it again re-focuses the existing layout rather than
+    splitting a second one, and a sidebar you have resized by hand keeps your
+    width. If only the sidebar has been closed, only the sidebar comes back.
+
+    The sidebar's database tree is not built yet, so both windows are
+    currently empty.
+
+                                                             *:SpacetimeToggle*
+:SpacetimeToggle
+                                                            *:SpacetimeConnect*
+:SpacetimeConnect [{nickname}]
+                                                          *:SpacetimeDatabases*
+:SpacetimeDatabases
+                                                             *:SpacetimeTables*
+:SpacetimeTables [{database}]
+                                                               *:SpacetimeRows*
+:SpacetimeRows {[database.]table}
+                                                             *:SpacetimeSchema*
+:SpacetimeSchema {[database.]table}
+                                                               *:SpacetimeLogs*
+:SpacetimeLogs[!] [{database}]
+                                                           *:SpacetimeLogsStop*
+:SpacetimeLogsStop
+
+    Placeholders. Each command exists, takes and completes its argument as
+    documented above, and notifies you that it is not implemented yet. Nothing
+    they do can fail, because they do not do anything yet.
+
+    |:SpacetimeLogs| takes a bang: without it the log view will be static,
+    with it the logs will be followed, and |:SpacetimeLogsStop| will stop the
+    follow. The bang is already parsed, so the two report themselves
+    separately.
 
                                                             *:SpacetimeStatus*
 :SpacetimeStatus

@@ -17,9 +17,10 @@ vim.g.loaded_spacetime = 1
 -- break the "module stays lazy" rule above.
 require("spacetime.ui.highlights").register()
 
--- Commands are registered eagerly but implemented lazily: the body requires its
--- module on invocation, so `:SpacetimeStatus` exists from startup without the
--- config, cli.toml and identity code being loaded until someone runs it.
-vim.api.nvim_create_user_command("SpacetimeStatus", function()
-	require("spacetime.status").show()
-end, { desc = "Show the resolved SpacetimeDB connection", bar = true })
+-- Commands are registered eagerly but implemented lazily: each body requires its
+-- own modules on invocation, so every `:Spacetime*` exists from startup without
+-- the config, cli.toml, state and UI code being loaded until someone runs one.
+-- `spacetime.commands` is itself a table of specs plus a registration loop —
+-- every require in it sits inside a function body — so this eager require costs
+-- no more than the highlight one above.
+require("spacetime.commands").register()

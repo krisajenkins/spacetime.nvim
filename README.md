@@ -2,8 +2,10 @@
 
 A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 
-> **Status: early.** The browsing interface is under construction. What works
-> today is connection resolution, which `:SpacetimeStatus` reports on.
+> **Status: early.** The browsing interface is under construction. The full
+> command set is defined, but most commands are placeholders that say so when
+> you run them — see [Commands](#commands). What works today is connection
+> resolution (`:SpacetimeStatus`) and the window layout (`:Spacetime`).
 
 ## Requirements
 
@@ -51,6 +53,45 @@ require("spacetime").setup({
   produces a sidebar narrower than 10 columns.
 
 ## Commands
+
+| Command                    | Does                                            |
+| -------------------------- | ----------------------------------------------- |
+| `:Spacetime`               | Open (or re-focus) the sidebar/content layout    |
+| `:SpacetimeToggle`         | Toggle the layout — *placeholder*                |
+| `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
+| `:SpacetimeDatabases`      | List your databases — *placeholder*              |
+| `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
+| `:SpacetimeRows {tbl}`     | Browse rows of `[db.]tbl` — *placeholder*        |
+| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl` — *placeholder*    |
+| `:SpacetimeLogs[!] [db]`   | Show logs; `!` follows them — *placeholder*      |
+| `:SpacetimeLogsStop`       | Stop following logs — *placeholder*              |
+| `:SpacetimeStatus`         | Print the resolved connection                    |
+
+A *placeholder* command exists, completes its argument and tells you it is not
+implemented yet. It never errors — the feature simply has not landed.
+
+### Completion
+
+`<Tab>` completes server nicknames from `cli.toml`, and database and table names
+**from what the plugin has already fetched this session**. Completion never
+makes a network request, so a name the plugin has not seen yet will not appear;
+run the command once and it will complete thereafter.
+
+- `:SpacetimeConnect` — nicknames from your `cli.toml`.
+- `:SpacetimeTables`, `:SpacetimeLogs` — cached database names.
+- `:SpacetimeRows`, `:SpacetimeSchema` — cached `db.table`, in both the source
+  and the SQL spelling where they differ (`spacegym.ledgerEntry` and
+  `spacegym.ledger_entry`).
+
+### `:Spacetime`
+
+Opens the browser layout in the current tabpage: a full-height sidebar of the
+configured `side` and `width`, and a content window beside it. Running it again
+re-focuses the existing layout rather than splitting a second one, and a sidebar
+you have resized by hand keeps your width.
+
+The sidebar's database tree is not built yet, so both windows are currently
+empty.
 
 ### `:SpacetimeStatus`
 
