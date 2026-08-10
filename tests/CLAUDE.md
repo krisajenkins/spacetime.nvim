@@ -57,9 +57,12 @@ helper installs it; if you build a child by hand you must do
 - `expect.no_error(function() ... end)`
 - `expect.reference_screenshot(child.get_screenshot())` — visual regression
 
-Screenshot references live in `tests/screenshots/`, named
-`tests-{filename}---{test_name}`. Delete the reference and re-run the file to
-re-baseline; review the new image before committing it.
+No suite uses `reference_screenshot` yet, so there is no `tests/screenshots/`
+directory. If you add one, references land there named
+`tests-{filename}---{test_name}`: delete the reference and re-run the file to
+re-baseline, and review the new image before committing it. Prefer asserting on
+buffer lines and extmarks where you can — they say what broke, a screenshot
+diff does not.
 
 ## Running Tests
 
@@ -68,6 +71,24 @@ make test                                  # all
 make test_file FILE=tests/test_main.lua    # one file
 nix develop --command make test            # outside a direnv shell
 ```
+
+## Fixtures
+
+The suite is offline: nothing here makes a network request or reads a token.
+Payloads that need to be real come from `tests/fixtures/` — responses captured
+from SpacetimeDB 2.8.0 on maincloud — read through the shared helper:
+
+```lua
+local read = require("tests.helpers.fixtures").read
+local text = read("schema_v10.json")
+```
+
+`read()` raises on a missing file, so a typo fails loudly rather than looking
+like an empty payload. `tests/fixtures/README.md` says what each file pins down
+and how to re-capture it; prefer adding a case against an existing fixture to
+inventing a hand-written payload, and where a test needs variety the fixtures do
+not have (log levels, say) add synthetic lines in the test rather than editing a
+captured file.
 
 ## Mocking Dependencies with package.loaded
 

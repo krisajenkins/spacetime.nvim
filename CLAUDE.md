@@ -5,9 +5,22 @@ code in this repository.
 
 ## spacetime.nvim - Neovim Plugin for SpacetimeDB
 
-spacetime.nvim integrates the SpacetimeDB CLI with Neovim. The repository is
-currently **scaffolding** — build, test, lint, docs and CI are wired up; the
-plugin's own functionality is not written yet.
+spacetime.nvim is a SpacetimeDB browser inside Neovim: `:Spacetime` opens a
+sidebar of the databases your identity owns beside a content window that browses
+rows as a sortable, pageable grid, describes schemas and reducers, and tails
+logs.
+
+**It talks to SpacetimeDB's HTTP API directly, over `curl`.** The `spacetime`
+CLI is not in the data path at all — it is how you log in (it writes the
+`cli.toml` the plugin reads for the server list and token) and something
+`:checkhealth` probes for. The plugin never shells out to it.
+
+Runtime requirements: Neovim >= 0.11.0 and **`curl` on `PATH`**, which carries
+every request. There are **no Lua dependencies** — no plenary, no parser, no
+compiled component. Keep it that way.
+
+`README.md` is the user-facing description and is accurate; prefer reading it to
+re-deriving behaviour from the code.
 
 ## Development Setup
 
@@ -24,7 +37,8 @@ This provides:
 - lua-language-server (type checking)
 - luacheck (static analysis)
 - stylua (code formatting)
-- spacetime (the SpacetimeDB CLI)
+- curl (the plugin's transport)
+- spacetime (the SpacetimeDB CLI — for `spacetime login`, not for browsing)
 
 Both `neovim` and `spacetimedb` are pinned ahead of nixpkgs by `overlays/`.
 `spacetimedb` installs upstream's release binaries (a download, not a build);
@@ -56,15 +70,60 @@ Always run `make` before declaring work done.
 ## Layout
 
 ```
-lua/spacetime.lua          Top-level module: setup() and config
-lua/spacetime/health.lua   :checkhealth spacetime
-lua/spacetime/logger.lua   Level-filtered vim.notify wrapper
-plugin/spacetime.lua       Load-time wiring (guard; commands go here)
-scripts/minimal_init.lua   Headless init used by the test runner
-tests/                     mini.test suites; helpers/ holds shared scaffolding
-doc/spacetime.txt          Vimdoc; doc/tags is generated and tracked
-overlays/                  Nix pins for neovim and spacetimedb
+lua/spacetime.lua              setup() and the options table
+lua/spacetime/commands.lua     every :Spacetime* command: specs + one register loop
+lua/spacetime/config.lua       which server, database and token a buffer means
+lua/spacetime/health.lua       :checkhealth spacetime
+lua/spacetime/logger.lua       level-filtered vim.notify wrapper; redacts the token
+lua/spacetime/state.lua        in-flight requests, sequence guard, timers, cache
+lua/spacetime/status.lua       :SpacetimeStatus — the resolved connection
+lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
+  blake3.lua                   single-chunk BLAKE3 on LuaJIT's bit library
+  client.lua                   one method per HTTP endpoint; cb(err, value) throughout
+  clitoml.lua                  deliberately partial reader for the CLI's cli.toml
+  http.lua                     the transport: request table -> curl -> response
+  identity.lua                 account identity derived from the token's OIDC claims
+  json.lua                     big-integer-preserving JSON decode
+  logs.lua                     one NDJSON log line -> one entry; level ordering
+  schema.lua                   schema v10 and v9 normalised into one model
+  sort.lua                     display order over the rows, without refetching
+  sql.lua                      the SQL response envelope and the SELECT builder
+  value.lua                    a SATS value plus its AlgebraicType, rendered
+lua/spacetime/ui/              buffers, windows, keymaps
+  buffer.lua                   scratch buffers and the sidebar/content layout
+  grid.lua                     row-grid layout: columns and cells -> lines + spans
+  highlights.lua               default highlight groups (all `default` links)
+  keys.lua                     buffer-local keymaps, and the unbinding
+  logs.lua                     the log view, static and followed
+  rows.lua                     the row grid view
+  schema.lua                   the schema detail view
+  sidebar.lua                  the sidebar controller: model, fetch, paint, keys
+  tree.lua                     the sidebar tree rendered as data
+plugin/spacetime.lua           load-time wiring: highlight groups and commands
+scripts/minimal_init.lua       headless init used by the test runner
+tests/                         mini.test suites; helpers/ holds the shared harness
+tests/fixtures/                real responses captured from a live server
+doc/spacetime.txt              vimdoc; doc/tags is generated and tracked
+overlays/                      Nix pins for neovim and spacetimedb
 ```
+
+### The library/UI split (load-bearing)
+
+Code under `lua/spacetime/lib/` **must not touch `vim.api`, `vim.fn`, `vim.ui`
+or `vim.notify`.** It takes data and returns data; anything that needs an editor
+belongs in `ui/`, and anything that needs the editor but is not a view
+(`commands.lua`, `config.lua`, `state.lua`, `status.lua`) sits directly under
+`lua/spacetime/`.
+
+Two things depend on that rule. It is what lets almost the whole suite run
+without a child Neovim, and it is the seam that keeps the sidecar escape hatch
+open — see "Why Lua, and not a Rust or TypeScript sidecar" in `ROADMAP.md`. Do
+not let a `vim.notify` creep into `lib/` for convenience; return an error and let
+the caller report it.
+
+`ui/grid.lua` and `ui/tree.lua` are data-in/data-out too, but `grid.lua` needs
+`vim.fn.strdisplaywidth` to measure columns, so it lives under `ui/`. That is the
+line: referential purity is not the test, `vim.*` is.
 
 ## Documentation
 
@@ -100,6 +159,12 @@ local child, new_set = require("tests.helpers.child")()
 local T = new_set()
 ```
 
+The suite is offline: no test makes a network request or reads a token.
+`tests/fixtures/` holds real responses captured from a live server, read via
+`tests/helpers/fixtures.lua`, and the transport seam every higher-level test
+stubs is `spacetime.lib.http` — never `lib/client.lua`. `tests/CLAUDE.md` has the
+details.
+
 ## Code Style
 
 - Formatting is owned by stylua — do not hand-format, run `make format`.
@@ -124,11 +189,12 @@ pipeline locally before calling anything done.
 
 ## Roadmap
 
-`ROADMAP.md` is the plan of record: the decisions taken (and why the rejected
-alternatives were rejected), facts probed against a live server, and an ordered
-task list. Each task is tracked as a GitHub issue whose body is self-contained.
-Read the roadmap section a task names before implementing it — the reasoning
-behind a constraint is usually there rather than in the issue.
+`ROADMAP.md` is the record of decisions: why each design choice was taken and
+why the rejected alternatives were rejected, facts probed against a live server,
+and the ordered task list v1 was built from. The build phases are done; what is
+still live there is the reasoning — read the relevant section before changing a
+constraint, because the argument for it is there rather than in the code — plus
+"Deferred past v1", which is where the next work comes from.
 
 <!-- agent-conventions: maintained by work-issues / work-todos -->
 ## Project conventions (cached)
