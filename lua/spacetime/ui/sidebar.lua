@@ -188,8 +188,8 @@ function M.render()
 end
 
 ---Write the placeholder into the content buffer, unless it already says
----something. Task 27 onwards writes real content there; this must never clobber
----it.
+---something. `ui/rows.lua` writes real content there, and reopening the layout
+---must never clobber it.
 ---@param bufnr integer
 local function place_placeholder(bufnr)
 	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -581,9 +581,24 @@ function M.select()
 	end
 
 	if node.kind == "table" or node.kind == "view" or node.kind == "system_table" then
-		require("spacetime.logger").warn(
-			("opening %s is not implemented yet (roadmap task 27)"):format(node.label or "this node")
-		)
+		-- The *canonical* name is what SQL takes; `node.label` is the source
+		-- spelling the developer wrote, and is only ever displayed.
+		local table_name = node.canonical or node.name
+		if not connection or not node.database or type(table_name) ~= "string" or table_name == "" then
+			require("spacetime.logger").warn("there is no table to open here")
+			return
+		end
+
+		require("spacetime.ui.rows").open({
+			connection = connection,
+			database = node.database,
+			table_name = table_name,
+			label = node.label,
+			-- The entry carries the primary key; the schema resolves a `Ref` in a
+			-- column's type. Both are already in hand, so neither costs a request.
+			entry = node.entry,
+			schema = node.db and node.db.schema or nil,
+		})
 	end
 end
 

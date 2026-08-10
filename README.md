@@ -6,8 +6,9 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
 > resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`): the
-> layout, and a sidebar listing your databases and the tables and views inside
-> them. Opening a table to see its rows is the next piece.
+> layout, a sidebar listing your databases and the tables and views inside them,
+> and `<CR>` on a table to see its rows. Sorting, paging and the schema view are
+> the next pieces.
 
 ## Requirements
 
@@ -108,9 +109,22 @@ session, so expanding it again is instant and puts nothing on the wire; `r`
 drops it and fetches again. A database that is paused answers nothing, so it is
 marked `⏸` and asked exactly once — press `r` on it once it has woken up.
 
-Anything that goes wrong is written into the sidebar as text: an unreachable
-server, a rejected token, a configuration that will not resolve. You will not
-get a stack trace, and the plugin never raises out of a command.
+`<CR>` on a table or a view runs `SELECT * FROM "table" LIMIT 100` and renders
+the answer in the content window as a grid: a header row, then one line per row,
+columns aligned by display width so `£` and `🎟` still line up. Primary-key
+headers, `NULL`s, identities, timestamps and truncated cells are highlighted.
+Cells wider than 40 columns are cut with a `…`; paging past the first 100 rows
+comes with a later release. The rows are cached per table for the session, and
+`r` in the sidebar drops that database's rows along with its schema.
+
+Switching tables quickly is safe: opening a second table cancels the first
+table's request, and a response that arrives after you have moved on is dropped
+rather than painted over the table you are now looking at.
+
+Anything that goes wrong is written into the buffer as text: an unreachable
+server, a rejected token, a configuration that will not resolve, a SQL error
+from the server (which arrives as plain text and is shown verbatim). You will
+not get a stack trace, and the plugin never raises out of a command.
 
 #### Sidebar keymaps
 

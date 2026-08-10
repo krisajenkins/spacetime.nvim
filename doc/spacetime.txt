@@ -21,9 +21,9 @@ The plugin is still early: the browsing interface is under construction. The
 full command set is defined and completes its arguments, but several commands
 are placeholders that say so when you run them — see |spacetime-commands|.
 What works today is connection resolution (|:SpacetimeStatus|) and the browser
-itself (|:Spacetime|): the window layout, and a sidebar listing your databases
-and the tables and views inside them. Opening a table to see its rows is the
-next piece.
+itself (|:Spacetime|): the window layout, a sidebar listing your databases and
+the tables and views inside them, and `<CR>` on a table to see its rows.
+Sorting, paging and the schema view are the next pieces.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -292,6 +292,39 @@ asks nothing — pressing `r` on it is how you ask again once it has woken up.
 Nothing is ever probed at startup: a pause is only ever discovered from a
 request you asked for.
 
+OPENING A TABLE                                       *spacetime-sidebar-rows*
+
+`<CR>` on a table or a view runs >
+
+    SELECT * FROM "table" LIMIT 100
+<
+and renders the answer in the content window as a grid: a header line, then one
+line per row. Columns are aligned by display width rather than by byte count,
+so `£` (one column, two bytes) and `🎟` (two columns, four bytes) still line up.
+
+Primary-key headers, `NULL` cells, identities, connection ids, timestamps and
+durations each get their own highlight group. Every group the plugin defines is
+a `default` link to a standard group, so your colourscheme wins and `:hi link
+SpacetimeNull Comment` is all it takes to change one.
+
+A cell wider than 40 columns is cut and marked with a `…`. Nothing is rounded
+or reformatted on the way: a 39-digit identifier is shown to its last digit,
+because a browser that quietly loses precision is worse than no browser.
+
+Only the first 100 rows are fetched. Paging past them comes with a later
+release. Rows are cached per table for the session, so re-opening a table you
+have already looked at puts nothing on the wire; `r` on the sidebar drops that
+database's rows along with its schema.
+
+Opening a second table cancels the first table's request, and a response that
+arrives after you have moved on is discarded rather than painted over the table
+you are now looking at.
+
+A SQL error — an unknown table, a syntax error — arrives from the server as
+plain text and is rendered in the content window verbatim: >
+
+    error: Unknown table: widgets
+<
 KEYMAPS                                            *spacetime-sidebar-keymaps*
 
 All of these are buffer-local to the sidebar; nothing is mapped globally. >
