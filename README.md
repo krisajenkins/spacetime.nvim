@@ -83,6 +83,8 @@ The sidebar then lists the databases belonging to your identity. From there:
   tables, then its views, then SpacetimeDB's own `st_*` system tables.
 - `<CR>` on a table or view runs `SELECT * FROM "table" LIMIT 100` and renders
   the answer in the content window as a grid.
+- `s` on a table or view shows its schema there instead; `gl` shows the logs of
+  the database the cursor is inside, and `gL` follows them live.
 - `q` closes the layout and cancels anything in flight; the content window gets
   its original buffer back.
 - `?` prints the sidebar's key map.
@@ -316,14 +318,24 @@ Every mapping is buffer-local; the plugin sets nothing globally.
 
 In the `spacetime://sidebar` buffer (filetype `spacetimetree`):
 
-| Key           | Does                                              |
-| ------------- | ------------------------------------------------- |
-| `<CR>` or `o` | Expand or open the node under the cursor          |
-| `r`           | Refresh: drop the cache and fetch again           |
-| `q`           | Close the layout                                  |
-| `y`           | Yank the node's name                              |
-| `gi`          | Yank the database's identity                      |
-| `?`           | Print this key map                                |
+| Key           | Does                                                   |
+| ------------- | ------------------------------------------------------ |
+| `<CR>` or `o` | Expand or open the node under the cursor               |
+| `s`           | Show the schema of the table or view under the cursor  |
+| `gl`          | Show the logs of the database the cursor is inside     |
+| `gL`          | Follow those logs live                                 |
+| `r`           | Refresh: drop the cache and fetch again                |
+| `q`           | Close the layout                                       |
+| `y`           | Yank the node's name                                   |
+| `gi`          | Yank the database's identity                           |
+| `?`           | Print this key map                                     |
+
+`s`, `gl` and `gL` are the keystroke forms of `:SpacetimeSchema` and
+`:SpacetimeLogs[!]`, answered by the node under the cursor: `s` needs a table
+or a view, and `gl`/`gL` take the database the cursor is inside — from one of
+its tables just as well as from the database line. Where a key does not apply
+it says so and does nothing. The sidebar's `s` and the grid's `s` (sort, below)
+are mappings in different buffers, so they never both apply.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
 system clipboard. `r` on a database node also drops that database's schema and

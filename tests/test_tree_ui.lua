@@ -83,7 +83,7 @@ local T = new_set({
 			NOTIFIED = {}
 			vim.notify = function(msg) NOTIFIED[#NOTIFIED + 1] = msg end
 
-			REQUESTS, KILLED = {}, 0
+			REQUESTS, KILLED, STREAMED = {}, 0, {}
 			package.loaded['spacetime.lib.http'] = {
 				request = function(opts, on_done)
 					REQUESTS[#REQUESTS + 1] = opts.url
@@ -93,8 +93,15 @@ local T = new_set({
 					end
 					return { kill = function() KILLED = KILLED + 1 end }
 				end,
-				stream = function()
-					error('the sidebar must not stream')
+				-- `client:logs` is the one thing the sidebar reaches that streams —
+				-- `gl` and `gL` — and it streams whether or not it is following. One
+				-- `Info` line, delivered in the |fast-event| context the real transport
+				-- uses, so the stub touches nothing but plain tables from inside it.
+				stream = function(opts, on_line, on_done)
+					STREAMED[#STREAMED + 1] = opts.url
+					on_line('{"level":"Info","ts":"1754728000000000","message":"hello"}')
+					on_done(nil, { status = 200, headers = {}, body = '' })
+					return { kill = function() KILLED = KILLED + 1 end }
 				end,
 			}
 		]])
@@ -559,7 +566,7 @@ T["every documented key is mapped, buffer-locally, in the sidebar"] = function()
 		end)(...)
 	]]
 
-	for _, lhs in ipairs({ "<CR>", "o", "r", "q", "y", "gi", "?" }) do
+	for _, lhs in ipairs({ "<CR>", "o", "s", "gl", "gL", "r", "q", "y", "gi", "?" }) do
 		local map = child.lua_get(described, { lhs })
 		expect.equality({ lhs, map.buffer, map.callback }, { lhs, 1, "function" })
 	end
@@ -610,6 +617,102 @@ T["? prints the key map"] = function()
 	local messages = child.cmd_capture("messages")
 	expect.equality(messages:find("spacetime.nvim sidebar", 1, true) ~= nil, true)
 	expect.equality(messages:find("yank the database identity", 1, true) ~= nil, true)
+	-- The keys that reach the other two views are listed too: `?` is the only
+	-- place they are discoverable, and it is built from the mapping table itself.
+	expect.equality(messages:find("show the schema of the table under the cursor", 1, true) ~= nil, true)
+	expect.equality(messages:find("show the logs of the database the cursor is in", 1, true) ~= nil, true)
+	expect.equality(messages:find("follow those logs live", 1, true) ~= nil, true)
+end
+
+--------------------------------------------------------------------------------
+-- Navigating to the other views
+--------------------------------------------------------------------------------
+
+-- `s`, `gl` and `gL` are the keystroke forms of `:SpacetimeSchema` and
+-- `:SpacetimeLogs[!]`, answered by the node under the cursor. Two tables, so
+-- "the schema of *that* table" is an assertion rather than a coincidence.
+local TWO_TABLES = '{"typespace":{"types":[]},"tables":[{"name":"widget"},{"name":"gadget"}]}'
+
+---@return string[]
+local function content_lines()
+	return buffer_lines("spacetime://content")
+end
+
+---The URL of the one and only log request, or `nil`.
+---@return string|nil
+local function streamed()
+	return child.lua_get([[STREAMED[1] ]])
+end
+
+T["s shows the schema of the table under the cursor"] = function()
+	serve_schema(TWO_TABLES)
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("<CR>")
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    gadget", "    widget", "▸ spacetutorial" })
+
+	-- Line three is `widget`, and it is `widget` the content window must describe.
+	child.type_keys("jj", "s")
+
+	local lines = content_lines()
+	expect.equality(lines[1], "widget")
+	expect.equality(vim.tbl_contains(lines, "Columns"), true)
+	-- The schema is the one the expansion cached, so pressing `s` costs nothing.
+	expect.equality(schema_requests(), 1)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+	-- And the cursor has not left the sidebar.
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+end
+
+T["s on a database node says so and does nothing"] = function()
+	serve_schema(TWO_TABLES)
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.lua([[ expect.no_error(function() vim.cmd('normal s') end) ]])
+
+	expect.equality(content_lines(), child.lua_get([[S.PLACEHOLDER]]))
+	expect.equality(child.lua_get([[NOTIFIED]]), { "[spacetime] there is no table to describe here" })
+end
+
+T["gl shows the logs of the database the cursor is inside"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	-- From a *table* node: the logs are the database's, whichever of its tables
+	-- the cursor happens to be on.
+	child.type_keys("<CR>", "j", "gl")
+
+	expect.equality(streamed():find("/v1/database/spacegym/logs", 1, true) ~= nil, true)
+	expect.equality(streamed():find("follow=false", 1, true) ~= nil, true)
+
+	local lines = content_lines()
+	expect.equality(lines[1]:find("spacegym · 1 line", 1, true), 1)
+	expect.equality(lines[2]:find("hello", 1, true) ~= nil, true)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["gL follows them instead"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+
+	child.type_keys("gL")
+
+	expect.equality(streamed():find("follow=true", 1, true) ~= nil, true)
+	-- The stub's stream ends as soon as it has spoken, so the badge reports a
+	-- follow that has stopped rather than one still running.
+	expect.equality(content_lines()[1]:find("· stopped", 1, true) ~= nil, true)
+end
+
+T["gl on a line that belongs to no database says so and does nothing"] = function()
+	child.lua([[ RESPONDER = function() return { status = 500, body = 'kaboom' } end ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	expect.equality(sidebar_lines(), { "error: HTTP 500: kaboom" })
+
+	child.lua([[ expect.no_error(function() vim.cmd('normal gl') end) ]])
+	child.lua([[ expect.no_error(function() vim.cmd('normal gL') end) ]])
+
+	expect.equality(child.lua_get([[#STREAMED]]), 0)
+	expect.equality(content_lines(), child.lua_get([[S.PLACEHOLDER]]))
+	expect.equality(child.lua_get([[NOTIFIED]]), {
+		"[spacetime] there is no database to show logs for here",
+		"[spacetime] there is no database to show logs for here",
+	})
 end
 
 --------------------------------------------------------------------------------

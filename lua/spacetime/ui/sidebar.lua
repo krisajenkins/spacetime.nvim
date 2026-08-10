@@ -610,6 +610,58 @@ function M.select()
 	end
 end
 
+---Show the schema of the table or view under the cursor. What `s` does.
+---
+---The keystroke form of |:SpacetimeSchema|, and deliberately nothing more: a
+---database node has no schema *view* to paint (what a database should paint is
+---still an open question), so it says so and does nothing rather than guessing.
+---
+---No layout call: the cursor is in the sidebar, so the content window is already
+---there. The schema itself is the one the tree cached when the database was
+---expanded, so this normally costs no request at all.
+function M.describe()
+	local node = M.node_under_cursor()
+	local kind = node ~= nil and node.kind or nil
+	if node == nil or (kind ~= "table" and kind ~= "view" and kind ~= "system_table") then
+		require("spacetime.logger").warn("there is no table to describe here")
+		return
+	end
+
+	-- The *canonical* name is what the schema view resolves by; `node.label` is
+	-- the source spelling, and is only ever displayed.
+	local table_name = node.canonical or node.name
+	local database = node.database
+	if not connection or type(database) ~= "string" or type(table_name) ~= "string" or table_name == "" then
+		require("spacetime.logger").warn("there is no table to describe here")
+		return
+	end
+
+	require("spacetime.ui.schema").open({
+		connection = connection,
+		database = database,
+		table_name = table_name,
+	})
+end
+
+---Show the logs of the database the cursor is inside. What `gl` and `gL` do.
+---
+---The keystroke form of |:SpacetimeLogs| and |:SpacetimeLogs!|. Every node
+---inside a database carries its name, so this works on a table as well as on the
+---database itself — the logs are the module's, whichever of its tables the
+---cursor happens to be on. A top-level message line belongs to no database and
+---says so.
+---@param follow boolean Keep the connection open and stream. What `!` means.
+function M.logs(follow)
+	local node = M.node_under_cursor()
+	local database = node and node.database
+	if not connection or type(database) ~= "string" or database == "" then
+		require("spacetime.logger").warn("there is no database to show logs for here")
+		return
+	end
+
+	require("spacetime.ui.logs").open({ connection = connection, database = database, follow = follow })
+end
+
 ---Put `text` in the register the user asked for — `"` unless they prefixed one,
 ---so `"+y` copies to the system clipboard.
 ---@param text any Anything but a non-empty string is nothing to yank.
@@ -643,6 +695,15 @@ end
 
 ---Every key the sidebar binds, and the help text `?` prints. One table, so the
 ---mappings and the help cannot drift apart.
+---
+---The three view keys — `s`, `gl`, `gL` — are the keystroke forms of the
+---commands that would otherwise be the only way in, and each is answered by the
+---node under the cursor rather than by an argument. Two rules hold them
+---together: a key that does not apply to the node under the cursor says so and
+---does nothing, and no key here shadows a motion. `s` is free because the
+---sidebar has no `s` of its own to lose (the grid's `s` sorts, but that is a
+---mapping in the *content* buffer, and the two never both apply); `gl` and `gL`
+---are `g`-prefixed, as `gi` already is, so `l` and `L` still move the cursor.
 ---@type SpacetimeKeymap[]
 M.KEYMAPS = {
 	{
@@ -650,6 +711,27 @@ M.KEYMAPS = {
 		desc = "expand or open the node under the cursor",
 		action = function()
 			M.select()
+		end,
+	},
+	{
+		keys = { "s" },
+		desc = "show the schema of the table under the cursor",
+		action = function()
+			M.describe()
+		end,
+	},
+	{
+		keys = { "gl" },
+		desc = "show the logs of the database the cursor is in",
+		action = function()
+			M.logs(false)
+		end,
+	},
+	{
+		keys = { "gL" },
+		desc = "follow those logs live",
+		action = function()
+			M.logs(true)
 		end,
 	},
 	{

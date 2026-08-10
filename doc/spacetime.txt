@@ -125,6 +125,9 @@ The sidebar then lists the databases belonging to your identity. From there:
             tables, then its views, then SpacetimeDB's `st_*` system tables.
     <CR>    on a table or view runs `SELECT * FROM "tbl" LIMIT 100` and
             renders the answer in the content window as a grid.
+    s       on a table or view shows its schema there instead; `gl` shows
+            the logs of the database the cursor is inside, and `gL` follows
+            them live.
     q       closes the layout and cancels anything in flight; the content
             window gets its original buffer back.
     ?       prints the sidebar's key map.
@@ -562,6 +565,9 @@ In the `spacetime://sidebar` buffer, whose 'filetype' is `spacetimetree` so
 you can hang your own autocommands or mappings off it: >
 
     <CR> / o    expand or open the node under the cursor
+    s           show the schema of the table under the cursor
+    gl          show the logs of the database the cursor is in
+    gL          follow those logs live
     r           refresh: drop the cache and fetch again
     q           close the layout
     y           yank the node's name
@@ -570,6 +576,21 @@ you can hang your own autocommands or mappings off it: >
 <
 Press `?` in the sidebar to print the same list; it comes from the same table
 the mappings are built from, so the two cannot disagree.
+
+`s`, `gl` and `gL` are the keystroke forms of |:SpacetimeSchema| and
+|:SpacetimeLogs|, answered by the node under the cursor rather than by an
+argument. `s` paints the schema of the table or view under the cursor into the
+content window, from the schema the tree already cached when the database was
+expanded, so it usually costs no request. `gl` and `gL` show the logs of the
+database the cursor is inside — from one of its tables just as well as from
+the database line — and `gL` streams until |:SpacetimeLogsStop| exactly as the
+bang does. Where a key does not apply to the node under the cursor it says so
+and does nothing: `s` on a database, or any of them on a message line.
+
+`s` in the sidebar and `s` in the grid (|spacetime-keys-rows|, where it sorts)
+are mappings in two different buffers, so they never both apply. `gl` and `gL`
+are `g`-prefixed for the same reason `gi` already was: `l` and `L` keep their
+usual meanings in the tree.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
 system clipboard.

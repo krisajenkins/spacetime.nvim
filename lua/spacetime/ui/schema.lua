@@ -45,10 +45,11 @@ M.OWNER = "schema"
 
 ---Every key the content window binds while it is showing a schema.
 ---
----Deliberately none: the schema view is text, and the roadmap's sidebar key map
----(task 24) names no key for it. The table is still here, and still applied on
----every render, because applying it is what *unbinds* the row grid's keys —
----see point 5 of the module header.
+---Deliberately none: the schema view is text, with nothing to page, sort or
+---filter. (The sidebar's `s` is what opens it; that is a mapping in the sidebar
+---buffer, not in this one.) The table is still here, and still applied on every
+---render, because applying it is what *unbinds* the row grid's keys — see point
+---5 of the module header.
 ---@type SpacetimeKeymap[]
 M.KEYMAPS = {}
 
