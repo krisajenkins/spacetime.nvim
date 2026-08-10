@@ -294,6 +294,23 @@ function M.owns_content(owner)
 	return content_owner == owner
 end
 
+---Every window in the current tabpage showing `bufnr`, in the tabpage's order.
+---
+---Usually none or one, but a buffer is not a window: the user may `:split` the
+---content window, and then two windows show `spacetime://content`. Teardown has
+---to deal with all of them, or `q` leaves a scratch buffer on screen.
+---@param bufnr integer
+---@return integer[] winids
+function M.windows_showing(bufnr)
+	local winids = {} ---@type integer[]
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if vim.api.nvim_win_get_buf(winid) == bufnr then
+			winids[#winids + 1] = winid
+		end
+	end
+	return winids
+end
+
 ---The window in the current tabpage showing `bufnr`, if any.
 ---
 ---Public because it is also how a caller asks "is the layout open?" — the same
@@ -302,12 +319,44 @@ end
 ---@param bufnr integer
 ---@return integer|nil winid
 function M.window_showing(bufnr)
+	return M.windows_showing(bufnr)[1]
+end
+
+---Is `winid` a floating window?
+---
+---Floats are in `nvim_tabpage_list_wins`, so a window count that does not filter
+---them out is not the count Neovim closes windows by: closing the last
+---*non-floating* window raises `E444` however many floats are on screen. A
+---notification popup is enough to make the difference, so |M.normal_windows()|
+---is what teardown counts with.
+---@param winid integer
+---@return boolean
+function M.is_floating(winid)
+	return vim.api.nvim_win_get_config(winid).relative ~= ""
+end
+
+---How many windows in the current tabpage Neovim would actually keep — every
+---one that is not a float.
+---@return integer
+function M.normal_windows()
+	local count = 0
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if vim.api.nvim_win_get_buf(winid) == bufnr then
-			return winid
+		if not M.is_floating(winid) then
+			count = count + 1
 		end
 	end
-	return nil
+	return count
+end
+
+---Is `bufnr` one of the plugin's own `spacetime://` buffers?
+---
+---The name test, in one place: teardown asks it of a buffer it is about to put
+---*back* in a window, and putting one of ours back is the one answer that is
+---never right.
+---@param bufnr integer|nil
+---@return boolean
+function M.is_ours(bufnr)
+	return type(bufnr) == "number" and is_spacetime_buffer(bufnr)
 end
 
 ---Split from `winid` with `command` and return the window that appears.
@@ -386,19 +435,44 @@ function M.open_layout()
 		vim.api.nvim_win_set_width(sidebar_win, width)
 	end
 
-	-- Chrome for a window the layout created and will close again, so these are
-	-- set outright and never put back. `'wrap'` is deliberately not among them:
-	-- it is the one option a *content* window has to give back, and it comes
-	-- from the same place for both windows — |spacetime.ui.buffer.WINDOW_OPTIONS|,
-	-- applied by the `BufWinEnter` watcher.
-	local wo = vim.wo[sidebar_win]
+	-- Chrome for a window the layout normally closes again, so it is set outright
+	-- rather than saved — the exception is a sidebar window that turns out to be
+	-- the last one in the tabpage, which teardown cannot close and hands to
+	-- |spacetime.ui.buffer.unstyle_sidebar()| instead. `'wrap'` is deliberately
+	-- not among these: it is the one option a *content* window has to give back,
+	-- and it comes from the same place for both windows —
+	-- |spacetime.ui.buffer.WINDOW_OPTIONS|, applied by the `BufWinEnter` watcher.
+	M.style_sidebar(sidebar_win)
+
+	vim.api.nvim_set_current_win(sidebar_win)
+	return sidebar_win, content_win
+end
+
+---The window options that make `winid` look like a sidebar.
+---@param winid integer
+function M.style_sidebar(winid)
+	local wo = vim.wo[winid]
 	wo.winfixwidth = true
 	wo.number = false
 	wo.relativenumber = false
 	wo.signcolumn = "no"
+end
 
-	vim.api.nvim_set_current_win(sidebar_win)
-	return sidebar_win, content_win
+---Make `winid` an ordinary window again.
+---
+---For the one case where a sidebar window outlives the layout: it was the last
+---window in the tabpage, so teardown gave it a buffer instead of closing it, and
+---a window the user is going to keep working in must not be left pinned to the
+---sidebar's width with its numbers off. The global values are what it gets back
+---— they are what a new window would have — rather than remembered ones, which
+---would have to survive an arbitrary session to be worth anything.
+---@param winid integer
+function M.unstyle_sidebar(winid)
+	local wo = vim.wo[winid]
+	wo.winfixwidth = false
+	wo.number = vim.o.number
+	wo.relativenumber = vim.o.relativenumber
+	wo.signcolumn = vim.o.signcolumn
 end
 
 return M

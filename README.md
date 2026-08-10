@@ -433,6 +433,14 @@ closing either closes both, whichever window you press it in. The schema and
 reducers views bind nothing else: they are text, with nothing to page, sort or
 filter.
 
+Closing never fails and never leaves one of the plugin's buffers on screen.
+When the layout is all that is left of the tabpage, the last window stays open
+with a buffer of yours in it — the one it displaced, failing that its alternate
+(`#`), failing that a fresh empty one — rather than closing Neovim. Every
+window showing a `spacetime://` buffer is dealt with, including a `:split` of
+the content window, and floating windows on screen (a notification popup, say)
+make no difference to any of it.
+
 ## Configuration
 
 `setup()` takes an optional table. Every field is optional.

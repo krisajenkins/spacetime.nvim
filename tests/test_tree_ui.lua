@@ -83,6 +83,17 @@ local T = new_set({
 			NOTIFIED = {}
 			vim.notify = function(msg) NOTIFIED[#NOTIFIED + 1] = msg end
 
+			-- The buffer of the first window a teardown could have left standing.
+			-- Floats are skipped: they are never what Neovim keeps, and a case that
+			-- opens one would otherwise be asserting about the float.
+			function surviving_buffer()
+				for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+					if not B.is_floating(winid) then
+						return vim.api.nvim_win_get_buf(winid)
+					end
+				end
+			end
+
 			REQUESTS, KILLED, STREAMED = {}, 0, {}
 			package.loaded['spacetime.lib.http'] = {
 				request = function(opts, on_done)
@@ -208,6 +219,100 @@ T["q closes the layout and cancels what is in flight"] = function()
 	end
 	-- And the child is still alive, one window showing what it displaced.
 	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 1)
+end
+
+-- The bug in issue #43: a float is in `nvim_tabpage_list_wins` but can never be
+-- the window Neovim keeps, so a teardown that counted it saw "two windows left"
+-- and closed the last real one — `E444: Cannot close last window`, raised out of
+-- the `q` mapping. One `vim.notify` popup from any notification plugin is enough
+-- to reproduce it, which is why the report says "regardless of" how the layout
+-- was opened.
+T["q closes the layout with a float on screen"] = function()
+	child.lua([[ vim.cmd('edit ' .. vim.fn.tempname()) ]])
+	child.lua([[ ORIGINAL = vim.api.nvim_get_current_buf() ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.lua([[
+    FLOAT = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, {
+      relative = 'editor', row = 1, col = 1, width = 10, height = 3,
+    })
+  ]])
+
+	expect.equality(child.lua_get([[(pcall(S.close))]]), true)
+
+	expect.equality(child.lua_get([[S.is_open()]]), false)
+	-- One real window, showing the file the layout displaced. The float is
+	-- somebody else's and is left alone.
+	expect.equality(child.lua_get([[B.normal_windows()]]), 1)
+	expect.equality(child.lua_get([[vim.api.nvim_win_is_valid(FLOAT)]]), true)
+	expect.equality(child.lua_get([[surviving_buffer() == ORIGINAL]]), true)
+end
+
+T["q closes both windows when the tabpage has others"] = function()
+	child.lua([[ vim.cmd('split') ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 3)
+
+	-- Pressed in the content window: `q` means the same thing from either half.
+	child.lua([[ vim.api.nvim_set_current_win(B.window_showing(B.find('spacetime://content'))) ]])
+	child.type_keys("q")
+
+	expect.equality(child.lua_get([[S.is_open()]]), false)
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 1)
+	for _, name in ipairs(window_buffers()) do
+		expect.no_equality(name:find("spacetime://", 1, true), 1)
+	end
+end
+
+-- `:only` in the sidebar leaves the layout as one window, and that window cannot
+-- be closed either. It gets a buffer — and its own chrome — back instead.
+T["q hands the sidebar back when it is the last window standing"] = function()
+	child.lua([[ vim.cmd('edit ' .. vim.fn.tempname()) ]])
+	child.lua([[ ORIGINAL = vim.api.nvim_get_current_buf() ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.lua([[ vim.cmd('only') ]])
+	expect.equality(window_buffers(), { "spacetime://sidebar" })
+
+	child.type_keys("q")
+
+	expect.equality(child.lua_get([[S.is_open()]]), false)
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 1)
+	expect.equality(child.lua_get([[surviving_buffer() == ORIGINAL]]), true)
+	expect.equality(child.lua_get([[vim.wo[0].winfixwidth]]), false)
+end
+
+-- A `:split` of the content window makes two windows showing the same buffer.
+-- Teardown deals with both, or the user is left sitting in a scratch buffer.
+T["q leaves no spacetime buffer on screen when the content window was split"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.lua([[
+    local content = B.window_showing(B.find('spacetime://content'))
+    vim.api.nvim_win_call(content, function() vim.cmd('split') end)
+  ]])
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 3)
+
+	child.type_keys("q")
+
+	expect.equality(child.lua_get([[S.is_open()]]), false)
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 1)
+	for _, name in ipairs(window_buffers()) do
+		expect.no_equality(name:find("spacetime://", 1, true), 1)
+	end
+end
+
+-- Nothing to displace and no alternate: the fallback is a real, listed buffer
+-- the user can work in, not one of ours.
+T["q falls back to a fresh listed buffer"] = function()
+	child.lua([[ ORIGINAL = vim.api.nvim_get_current_buf() ]])
+	child.lua([[ vim.cmd('Spacetime') ]])
+	-- The displaced buffer is gone by the time `q` comes to put it back.
+	child.lua([[ vim.api.nvim_buf_delete(ORIGINAL, { force = true }) ]])
+
+	child.type_keys("q")
+
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 1)
+	expect.equality(child.lua_get([[B.is_ours(vim.api.nvim_get_current_buf())]]), false)
+	expect.equality(child.lua_get([[vim.bo[0].buflisted]]), true)
+	expect.equality(child.lua_get([[vim.bo[0].buftype]]), "")
 end
 
 T[":SpacetimeToggle closes an open layout and reopens a closed one"] = function()

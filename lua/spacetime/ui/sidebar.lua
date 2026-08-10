@@ -568,6 +568,47 @@ function M.is_open()
 	return sidebar_window() ~= nil
 end
 
+---A buffer for the last window standing: something of the user's, never ours.
+---
+---Three candidates, in order, and the order is the point:
+---
+--- 1. the buffer this window was showing when the layout displaced it, which is
+---    what "give me my window back" means;
+--- 2. the window's own alternate — `#`, what `:b#` and `<C-^>` go to — for a
+---    window we never displaced anything out of (the sidebar, when it is all
+---    that is left, or a `:split` of the content window);
+--- 3. a fresh listed, empty buffer, for a session that has nothing else in it.
+---
+---A candidate that is one of ours is skipped: handing `spacetime://content` back
+---to the window is exactly the thing this exists to avoid.
+---@param winid integer The window about to be restored.
+---@return integer bufnr
+local function restore_buffer(winid)
+	local buffer = require("spacetime.ui.buffer")
+
+	---@param bufnr integer|nil
+	---@return boolean
+	local function usable(bufnr)
+		return type(bufnr) == "number" and bufnr > 0 and vim.api.nvim_buf_is_valid(bufnr) and not buffer.is_ours(bufnr)
+	end
+
+	if usable(displaced) then
+		return displaced --[[@as integer]]
+	end
+
+	-- `bufnr('#')` is per window, so it is read from inside the window it is
+	-- being read for. Unlisted alternates (a help buffer, another plugin's
+	-- scratch) are refused: the point is to land the user somewhere they can work.
+	local alternate = vim.api.nvim_win_call(winid, function()
+		return vim.fn.bufnr("#")
+	end)
+	if usable(alternate) and vim.bo[alternate].buflisted then
+		return alternate
+	end
+
+	return vim.api.nvim_create_buf(true, false)
+end
+
 ---Close the layout, cancelling everything in flight.
 ---
 ---The cancel comes first and is unconditional: a response landing after the
@@ -581,36 +622,53 @@ end
 ---tick for the rest of the session; `logs.teardown` is silent and idempotent, so
 ---it is safe to call whether or not anything was being followed.
 ---
----Neither window is ever the one that closes Neovim. When the content window is
----the last one standing it is handed back the buffer it displaced (or a fresh
----empty one) rather than being closed.
+---Neither window is ever the one that closes Neovim, and no window is left
+---showing a `spacetime://` buffer. The last window standing is handed a normal
+---buffer back — see `restore_buffer` above — instead of being closed.
+---
+---The count that decides is `buffer.normal_windows()`, not the length of
+---`nvim_tabpage_list_wins`: floats are in that list but cannot be what Neovim is
+---left with, so a single notification popup on screen was enough to make the old
+---count say "two windows" and the close raise `E444: Cannot close last window`.
+---Floats are closed unconditionally for the same reason — one can never be the
+---window that survives.
 function M.close()
 	require("spacetime.state").cancel_all()
 	require("spacetime.ui.logs").teardown()
 
 	local buffer = require("spacetime.ui.buffer")
 
-	local sidebar_win = sidebar_window()
-	if sidebar_win and #vim.api.nvim_tabpage_list_wins(0) > 1 then
-		vim.api.nvim_win_close(sidebar_win, true)
+	-- Sidebar windows first, so the one left standing is a content window: that
+	-- is the user's own window, the one whose buffer we displaced. Every window
+	-- showing either buffer is collected, not just the first — `:split` in the
+	-- content window makes two, and one left behind is a scratch buffer the user
+	-- has to clear by hand.
+	local windows = {} ---@type { win: integer, sidebar: boolean }[]
+	for _, name in ipairs({ buffer.SIDEBAR_NAME, buffer.CONTENT_NAME }) do
+		local bufnr = buffer.find(name)
+		for _, winid in ipairs(bufnr and buffer.windows_showing(bufnr) or {}) do
+			windows[#windows + 1] = { win = winid, sidebar = name == buffer.SIDEBAR_NAME }
+		end
 	end
 
-	local content_buf = buffer.find(buffer.CONTENT_NAME)
-	local content_win = content_buf and buffer.window_showing(content_buf)
-	if not content_win then
-		return
+	for _, entry in ipairs(windows) do
+		-- Re-checked per window: closing one of ours can take another with it (an
+		-- `autocmd`, a `WinClosed` handler), and the count changes under the loop
+		-- by construction.
+		local winid = entry.win
+		if vim.api.nvim_win_is_valid(winid) then
+			if buffer.is_floating(winid) or buffer.normal_windows() > 1 then
+				vim.api.nvim_win_close(winid, true)
+			else
+				vim.api.nvim_win_set_buf(winid, restore_buffer(winid))
+				if entry.sidebar then
+					-- A sidebar window that survives is a window the user keeps, so
+					-- it gives back the chrome the layout put on it.
+					buffer.unstyle_sidebar(winid)
+				end
+			end
+		end
 	end
-
-	if #vim.api.nvim_tabpage_list_wins(0) > 1 then
-		vim.api.nvim_win_close(content_win, true)
-		return
-	end
-
-	local restore = displaced
-	if not (restore and vim.api.nvim_buf_is_valid(restore)) then
-		restore = vim.api.nvim_create_buf(true, false)
-	end
-	vim.api.nvim_win_set_buf(content_win, restore)
 end
 
 ---Close the layout if it is open, open it otherwise.

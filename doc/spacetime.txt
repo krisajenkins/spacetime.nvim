@@ -680,8 +680,16 @@ response cannot arrive after you have closed the browser; a log follow is
 stopped along with them. It works from either window — the sidebar and the
 content window are one thing, so `q` in the grid, the schema or the logs does
 exactly what `q` in the sidebar does. The content window is handed back the
-buffer it displaced. When the layout is all that is left of the tabpage, that
-window stays open with your buffer in it rather than closing Neovim.
+buffer it displaced.
+
+`q` never fails and never leaves one of the plugin's buffers on screen. When
+the layout is all that is left of the tabpage the last window stays open with
+a buffer of yours in it — the one it displaced, failing that its alternate
+(`#`), failing that a fresh empty one — rather than closing Neovim; a sidebar
+that survives that way gets its own width, numbers and signcolumn back. Every
+window showing a `spacetime://` buffer is dealt with, including a `:split` of
+the content window, and floating windows on screen (a notification popup, say)
+make no difference to any of it.
 
 ROWS                                                     *spacetime-keys-rows*
 

@@ -212,4 +212,54 @@ T["the layout is built in the current tabpage"] = function()
 	expect.equality(child.lua_get([[#vim.api.nvim_list_tabpages()]]), 1)
 end
 
+T["unstyling the sidebar gives an ordinary window back"] = function()
+	child.lua([[ SIDEBAR = B.open_layout() ]])
+	child.lua([[ B.unstyle_sidebar(SIDEBAR) ]])
+	child.lua([[
+    expect.equality(vim.wo[SIDEBAR].winfixwidth, false)
+    expect.equality(vim.wo[SIDEBAR].number, vim.o.number)
+    expect.equality(vim.wo[SIDEBAR].relativenumber, vim.o.relativenumber)
+    expect.equality(vim.wo[SIDEBAR].signcolumn, vim.o.signcolumn)
+  ]])
+end
+
+--------------------------------------------------------------------------------
+-- Counting windows
+--------------------------------------------------------------------------------
+
+T["every window showing a buffer is found, not only the first"] = function()
+	child.lua([[
+    local sidebar, content = B.open_layout()
+    vim.api.nvim_win_call(content, function() vim.cmd('split') end)
+    CONTENT_BUF = vim.api.nvim_win_get_buf(content)
+    SIDEBAR_BUF = vim.api.nvim_win_get_buf(sidebar)
+  ]])
+
+	expect.equality(child.lua_get([[#B.windows_showing(CONTENT_BUF)]]), 2)
+	expect.equality(child.lua_get([[#B.windows_showing(SIDEBAR_BUF)]]), 1)
+	-- The singular is the first of them, and still answers "is this on screen?".
+	expect.equality(child.lua_get([[B.window_showing(CONTENT_BUF) == B.windows_showing(CONTENT_BUF)[1] ]]), true)
+end
+
+-- The regression the E444 fix rests on: a float is in `nvim_tabpage_list_wins`
+-- but can never be the window Neovim is left with, so it must not be counted.
+T["floats are not counted as windows the layout could leave behind"] = function()
+	child.lua([[
+    FLOAT = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, {
+      relative = 'editor', row = 1, col = 1, width = 10, height = 3,
+    })
+  ]])
+
+	expect.equality(child.lua_get([[#vim.api.nvim_tabpage_list_wins(0)]]), 2)
+	expect.equality(child.lua_get([[B.normal_windows()]]), 1)
+	expect.equality(child.lua_get([[B.is_floating(FLOAT)]]), true)
+	expect.equality(child.lua_get([[B.is_floating(vim.api.nvim_get_current_win())]]), false)
+end
+
+T["our own buffers are recognised by name"] = function()
+	expect.equality(child.lua_get([[B.is_ours(B.get('spacetime://content'))]]), true)
+	expect.equality(child.lua_get([[B.is_ours(vim.api.nvim_create_buf(true, false))]]), false)
+	expect.equality(child.lua_get([[B.is_ours(nil)]]), false)
+end
+
 return T
