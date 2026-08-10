@@ -303,6 +303,38 @@ local function table_target(arg, command)
 	return connection, database, table_name
 end
 
+---Resolve the database a `[db]` argument means, and the connection it belongs to.
+---
+---The bare-argument sibling of `table_target`: with no argument the database is
+---the one the resolved connection carries — the project's `spacetime.json`, the
+---environment, or whatever `setup()` was given — which is what "the currently
+---selected database" amounts to outside the sidebar. As there, the connection is
+---resolved from the *current* buffer, before the layout displaces it.
+---
+---Every failure is reported here and answers `nil`, so a caller has one thing to
+---check.
+---@param arg string The command's one argument; empty when it was omitted.
+---@param command string The command as the user typed it, for the messages.
+---@return SpacetimeConnection|nil connection
+---@return string|nil database
+local function database_target(arg, command)
+	local logger = require("spacetime.logger")
+
+	local connection, err = require("spacetime.config").current(vim.api.nvim_get_current_buf())
+	if not connection then
+		logger.error(err or "no connection could be resolved")
+		return nil, nil
+	end
+
+	local database = (type(arg) == "string" and arg ~= "") and arg or connection.database
+	if type(database) ~= "string" or database == "" then
+		logger.warn(("no database is configured here: write it as %s <database>"):format(command))
+		return nil, nil
+	end
+
+	return connection, database
+end
+
 ---Open the browser on `[db.]table`'s rows. What `:SpacetimeRows` does.
 ---@param arg string The command's one argument.
 local function open_rows(arg)
@@ -349,6 +381,20 @@ local function open_schema(arg)
 		database = database,
 		table_name = table_name,
 	})
+end
+
+---Show `[db]`'s logs. What `:SpacetimeLogs` does.
+---@param arg string The command's one argument; empty when it was omitted.
+local function open_logs(arg)
+	local connection, database = database_target(arg, ":SpacetimeLogs")
+	if not connection or not database then
+		return
+	end
+
+	-- The layout first: `ui/logs.lua` paints into the content buffer, and there is
+	-- no content buffer until the browser is open.
+	require("spacetime.ui.sidebar").open()
+	require("spacetime.ui.logs").open({ connection = connection, database = database })
 end
 
 ---One user command, as `M.register` needs it.
@@ -433,15 +479,17 @@ M.COMMANDS = {
 		nargs = "?",
 		bang = true,
 		complete = M.complete_database,
-		-- The bang is the follow/static switch (tasks 31 and 32), so it is parsed
-		-- here rather than left for later: the two are separate features and the
-		-- placeholder should say which one was asked for.
+		-- The bang is the follow/static switch, and only the static half is built
+		-- (roadmap task 32 owns follow). Falling through to the static view without
+		-- a word would look like follow had started and then stopped on its own, so
+		-- the bang says what it did instead of doing it silently.
 		run = function(cmd)
 			if cmd.bang then
-				todo(":SpacetimeLogs!", 32)
-			else
-				todo(":SpacetimeLogs", 31)
+				require("spacetime.logger").warn(
+					":SpacetimeLogs! (follow) is not implemented yet (roadmap task 32); showing the static log instead"
+				)
 			end
+			open_logs(cmd.args)
 		end,
 	},
 	{

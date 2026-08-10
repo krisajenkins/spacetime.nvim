@@ -27,6 +27,16 @@ M.links = {
 	SpacetimeTruncated = "NonText", -- the truncation ellipsis
 	SpacetimeError = "ErrorMsg", -- in-buffer error text
 	SpacetimePaused = "WarningMsg", -- the paused marker
+	-- One group per log level, rather than one shared "severe" group: the level
+	-- column is the only thing that distinguishes two otherwise identical log
+	-- lines, and a user who wants `Debug` out of the way should be able to say so
+	-- without also dimming `Info`.
+	SpacetimeLogPanic = "ErrorMsg",
+	SpacetimeLogError = "ErrorMsg",
+	SpacetimeLogWarn = "WarningMsg",
+	SpacetimeLogInfo = "MoreMsg",
+	SpacetimeLogDebug = "Comment",
+	SpacetimeLogTrace = "Comment",
 }
 
 ---Define every group in `M.links` as a default link. Idempotent, and a no-op

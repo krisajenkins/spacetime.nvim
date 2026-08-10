@@ -21,7 +21,7 @@ T["registers every documented group as a link at load time"] = function()
 	child.lua(EXPECT_ALL_LINKED)
 end
 
-T["the documented group list is exactly the eleven UI groups"] = function()
+T["the documented group list is exactly the seventeen UI groups"] = function()
 	expect.equality(child.lua_get([[require('spacetime.ui.highlights').links]]), {
 		SpacetimeHeader = "Title",
 		SpacetimeDatabase = "Directory",
@@ -34,6 +34,13 @@ T["the documented group list is exactly the eleven UI groups"] = function()
 		SpacetimeTruncated = "NonText",
 		SpacetimeError = "ErrorMsg",
 		SpacetimePaused = "WarningMsg",
+		-- One per log level, so `Debug` can be dimmed without dimming `Info`.
+		SpacetimeLogPanic = "ErrorMsg",
+		SpacetimeLogError = "ErrorMsg",
+		SpacetimeLogWarn = "WarningMsg",
+		SpacetimeLogInfo = "MoreMsg",
+		SpacetimeLogDebug = "Comment",
+		SpacetimeLogTrace = "Comment",
 	})
 end
 

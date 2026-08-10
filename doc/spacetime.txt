@@ -21,11 +21,12 @@ The plugin is still early: the browsing interface is under construction. The
 full command set is defined and completes its arguments, but several commands
 are placeholders that say so when you run them — see |spacetime-commands|.
 What works today is connection resolution (|:SpacetimeStatus|) and the browser
-itself (|:Spacetime|, |:SpacetimeRows| and |:SpacetimeSchema|): the window
-layout, a sidebar listing your databases and the tables and views inside them,
-`<CR>` on a table to see its rows — sorted, paged, yanked or floated in full —
-and the schema of a table alongside the module's reducers. The log view is the
-next piece.
+itself (|:Spacetime|, |:SpacetimeRows|, |:SpacetimeSchema| and
+|:SpacetimeLogs|): the window layout, a sidebar listing your databases and the
+tables and views inside them, `<CR>` on a table to see its rows — sorted,
+paged, yanked or floated in full — the schema of a table alongside the module's
+reducers, and a static view of a database's logs. Following the logs live is
+the next piece.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -74,6 +75,7 @@ unset fields keep their defaults. >lua
       identity = nil,
       side = "left",
       width = 30,
+      log_lines = 200,
     })
 <
                                                        *spacetime-opt-log_level*
@@ -118,6 +120,16 @@ width ~
     commands will not resize it behind your back — and if you resize it by
     hand, re-opening the layout leaves your width alone.
 
+                                                       *spacetime-opt-log_lines*
+log_lines ~
+    Type: `number`, default: `200`
+
+    How much log backlog |:SpacetimeLogs| asks the server for, as the
+    `num_lines` of the request. Zero is allowed and means "no backlog".
+
+    A negative number, or one with a fractional part, is rejected by
+    |spacetime.setup()|: the value goes straight into a query string.
+
 ==============================================================================
 5. COMMANDS                                               *spacetime-commands*
 
@@ -130,7 +142,7 @@ The plugin defines ten commands: >
     :SpacetimeTables [db]       list a database's tables   (placeholder)
     :SpacetimeRows {tbl}        browse rows of [db.]tbl
     :SpacetimeSchema {tbl}      schema of [db.]tbl
-    :SpacetimeLogs[!] [db]      show logs; ! follows them  (placeholder)
+    :SpacetimeLogs[!] [db]      show a database's logs (! placeholder)
     :SpacetimeLogsStop          stop following logs        (placeholder)
     :SpacetimeStatus            print the resolved connection
 <
@@ -232,12 +244,40 @@ tokens in that file are never touched by completion.
     database you have already expanded costs no request, and expanding that
     database afterwards costs none either. `r` in the sidebar drops it.
 
+                                                               *:SpacetimeLogs*
+:SpacetimeLogs[!] [{database}]
+
+    Open the browser and put that database's logs in the content window: the
+    last |spacetime-opt-log_lines| entries, oldest first, as level, timestamp
+    and message. >
+
+    spacegym · 11 lines · asked for 200
+    Info  2026-08-09T08:43:53.970840Z  Repairing stale view backing tables
+    Info  2026-08-09T08:43:53.972374Z  Disconnecting all users
+<
+    The database may be left off, in which case it is the one the connection
+    resolved for the current buffer carries — your project's `spacetime.json`,
+    the environment, or |spacetime.setup()|. With no database on either, the
+    command says so and does nothing.
+
+    The level is highlighted per severity (`SpacetimeLogError`,
+    `SpacetimeLogWarn`, `SpacetimeLogInfo` and the rest), the timestamp is the
+    same UTC rendering a Timestamp column gets, and the message is shown
+    verbatim. A line that is not a log record is skipped **silently**: one
+    malformed line must never cost you the rest of the log.
+
+    Nothing here is cached — a log tail is stale the moment it lands — so
+    every |:SpacetimeLogs| makes a request, and running it for a second
+    database cancels the first.
+
+    The bang means follow, and follow is not implemented yet:
+    |:SpacetimeLogs|! reports that and shows the static log instead, so a bang
+    never quietly behaves as though you had not typed it.
+
                                                             *:SpacetimeConnect*
 :SpacetimeConnect [{nickname}]
                                                              *:SpacetimeTables*
 :SpacetimeTables [{database}]
-                                                               *:SpacetimeLogs*
-:SpacetimeLogs[!] [{database}]
                                                            *:SpacetimeLogsStop*
 :SpacetimeLogsStop
 
@@ -245,10 +285,8 @@ tokens in that file are never touched by completion.
     documented above, and notifies you that it is not implemented yet. Nothing
     they do can fail, because they do not do anything yet.
 
-    |:SpacetimeLogs| takes a bang: without it the log view will be static,
-    with it the logs will be followed, and |:SpacetimeLogsStop| will stop the
-    follow. The bang is already parsed, so the two report themselves
-    separately.
+    |:SpacetimeLogsStop| will stop a log follow once |:SpacetimeLogs|! starts
+    one.
 
                                                             *:SpacetimeStatus*
 :SpacetimeStatus

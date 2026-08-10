@@ -112,6 +112,23 @@ T["a timestamp formats as ISO-8601 UTC from either wire spelling"] = function()
 	expect.equality((value.format({ 1780864718837447 }, created_at, model())), "2026-06-07T20:38:38.837447Z")
 end
 
+-- The two renderers exported for callers that have micros but no column: the
+-- row grid's badge (`duration`) and the log view's stamp (`timestamp`). They
+-- must be the *same* renderers a cell goes through, or a timestamp would read
+-- one way in the grid and another in the logs.
+T["the exported timestamp and duration renderers agree with the cell ones"] = function()
+	local created_at = element_type(0, 6)
+
+	expect.equality(value.timestamp(1780864718837447), "2026-06-07T20:38:38.837447Z")
+	expect.equality(value.timestamp("1780864718837447"), (value.format({ 1780864718837447 }, created_at, model())))
+	expect.equality(value.duration(90000000), "1m 30s")
+
+	-- Anything that is not a count of micros is `nil` rather than a guess: the log
+	-- view shows its own placeholder for an entry whose `ts` was unreadable.
+	expect.equality(value.timestamp("nope"), nil)
+	expect.equality(value.timestamp(nil), nil)
+end
+
 T["ScheduleAt renders both of its variants with their payloads"] = function()
 	local scheduled_at = element_type(6, 2)
 	expect.equality((value.format({ 0, { 90000000 } }, scheduled_at, model())), "Interval(1m 30s)")

@@ -1047,6 +1047,21 @@ function M.duration(micros)
 	return duration_text(n)
 end
 
+---Micros since the Unix epoch as ISO-8601 UTC: `2026-08-09T12:34:56.970840Z`.
+---
+---The same renderer a `Timestamp` column goes through, exported for the same
+---reason |spacetime.lib.value.duration()| is: the log view stamps each entry
+---from `logs.ts`, and a timestamp must read the same there as it does in a cell.
+---@param micros any A number, or the decimal string `lib/json.lua` hands back.
+---@return string|nil # `nil` when `micros` is not a count of microseconds.
+function M.timestamp(micros)
+	local n = to_micros(micros)
+	if n == nil then
+		return nil
+	end
+	return timestamp_text(n)
+end
+
 ---A raw SATS value plus its type, as display text and an optional highlight
 ---group.
 ---

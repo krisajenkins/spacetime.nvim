@@ -27,6 +27,7 @@ spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*
 spacetime-opt-identity	spacetime.txt	/*spacetime-opt-identity*
 spacetime-opt-log_level	spacetime.txt	/*spacetime-opt-log_level*
+spacetime-opt-log_lines	spacetime.txt	/*spacetime-opt-log_lines*
 spacetime-opt-side	spacetime.txt	/*spacetime-opt-side*
 spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*

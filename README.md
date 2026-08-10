@@ -6,10 +6,11 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
 > resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`,
-> `:SpacetimeRows` and `:SpacetimeSchema`): the layout, a sidebar listing your
-> databases and the tables and views inside them, `<CR>` on a table to see its
-> rows — sorted, paged, yanked or floated in full — and the schema of a table
-> alongside the module's reducers. The log view is the next piece.
+> `:SpacetimeRows`, `:SpacetimeSchema` and `:SpacetimeLogs`): the layout, a
+> sidebar listing your databases and the tables and views inside them, `<CR>` on
+> a table to see its rows — sorted, paged, yanked or floated in full — the schema
+> of a table alongside the module's reducers, and a static view of a database's
+> logs. Following the logs live is the next piece.
 
 ## Requirements
 
@@ -43,6 +44,7 @@ require("spacetime").setup({
   identity = nil,
   side = "left",
   width = 30,
+  log_lines = 200,
 })
 ```
 
@@ -55,6 +57,8 @@ require("spacetime").setup({
   percentage of the screen as a string, e.g. `"20%"`. A percentage is resolved
   against the terminal's current width each time the layout is opened, and never
   produces a sidebar narrower than 10 columns.
+- `log_lines` — how much log backlog `:SpacetimeLogs` asks the server for (`200`
+  by default). Any whole number of lines, zero or more.
 
 ## Commands
 
@@ -67,7 +71,7 @@ require("spacetime").setup({
 | `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
 | `:SpacetimeRows {tbl}`     | Open the browser on the rows of `[db.]tbl`       |
 | `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`, and the reducers  |
-| `:SpacetimeLogs[!] [db]`   | Show logs; `!` follows them — *placeholder*      |
+| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` (follow) is a *placeholder* |
 | `:SpacetimeLogsStop`       | Stop following logs — *placeholder*              |
 | `:SpacetimeStatus`         | Print the resolved connection                    |
 
@@ -240,6 +244,36 @@ your module rather than a report of what the server said.
 Nothing in this view is truncated, and it binds no keys of its own. The schema
 is the same one the sidebar caches, so describing a table in a database you have
 already expanded costs no request; `r` in the sidebar drops it.
+
+### `:SpacetimeLogs`
+
+`:SpacetimeLogs spacegym` opens the browser and puts that database's logs in the
+content window: the last `log_lines` entries, oldest first, as level, timestamp
+and message.
+
+```
+spacegym · 11 lines · asked for 200
+Info  2026-08-09T08:43:53.970840Z  Repairing stale view backing tables
+Info  2026-08-09T08:43:53.972374Z  Disconnecting all users
+```
+
+The database may be left off — `:SpacetimeLogs` — in which case it is the one
+your project's `spacetime.json` names, or whatever else the connection resolved
+to; with neither, the command says so and does nothing.
+
+The level is highlighted per severity (`SpacetimeLogError`, `SpacetimeLogWarn`,
+`SpacetimeLogInfo` and so on), the timestamp is the same UTC rendering a
+`Timestamp` column gets, and the message is shown verbatim. A line the server
+sent that is not a log record is **skipped silently** — one malformed line never
+costs you the rest of the log.
+
+Nothing here is cached: a log tail is stale the moment it lands, so every
+`:SpacetimeLogs` is a fresh request, and running it for a second database
+cancels the first.
+
+`:SpacetimeLogs!` — follow — is not implemented yet. It says so and shows the
+static log instead, so a bang never quietly behaves as if you had not typed it.
+`:SpacetimeLogsStop`, which will stop a follow, is still a placeholder too.
 
 ### `:SpacetimeStatus`
 
