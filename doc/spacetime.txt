@@ -33,7 +33,8 @@ CLI's configuration file for your server list and your token.
 
 STATUS: EARLY. Two of the commands are still placeholders and say so when you
 run them: |:SpacetimeConnect| and |:SpacetimeTables|. Everything else
-described in this file is implemented.
+described in this file is implemented. Browsing is read-only: there is no way
+to write a row or call a reducer from here yet.
 
 ==============================================================================
 2. REQUIREMENTS                                       *spacetime-requirements*
@@ -126,9 +127,9 @@ The sidebar then lists the databases belonging to your identity. From there:
             each prefixed with its access icon (|spacetime-sidebar-glyphs|).
     <CR>    on a table or view runs `SELECT * FROM "tbl" LIMIT 100` and
             renders the answer in the content window as a grid.
-    s       on a table or view shows its schema there instead; `gl` shows
-            the logs of the database the cursor is inside, and `gL` follows
-            them live.
+    s       on a table or view shows its schema there instead; `R` lists the
+            reducers of the database the cursor is inside, `gl` shows that
+            database's logs, and `gL` follows them live.
     q       closes the layout and cancels anything in flight; the content
             window gets its original buffer back.
     ?       prints the sidebar's key map.
@@ -154,8 +155,8 @@ Four glyphs carry the whole of the sidebar's status:
 
 A table's icon comes from its `table_access` and a view's from its `is_public`;
 system tables are marked the same way as any other table. Set
-|spacetime-opt-icons| to `"ascii"` for `-` and `+` instead, or to `"none"` for
-no icon column at all, on a terminal with no emoji font.
+|spacetime-opt-icons| to `"ascii"` for `+` (public) and `-` (private) instead,
+or to `"none"` for no icon column at all, on a terminal with no emoji font.
 
 Both emoji are "wide" by Unicode, so a terminal that draws them narrow draws
 both narrow: the names stay in one column and only that column's position
@@ -760,6 +761,28 @@ and the content window are one thing, so closing either closes both, whichever
 window you press it in. The schema and reducers views bind nothing else: both
 are text, with nothing to page, sort or filter.
 
+BUFFERS AND WINDOWS                                       *spacetime-buffers*
+
+The layout has two buffers, and both their names and their 'filetype's are
+stable, so your own autocommands and mappings have something to key off:
+
+    `spacetime://sidebar`     'filetype' `spacetimetree`
+    `spacetime://content`     'filetype' `spacetime`
+
+                                                          *spacetime-nowrap*
+A window is held to 'nowrap' while it is showing either of them, and gets its
+own 'wrap' back the moment it shows anything else — `q`, |:edit|, |:bdelete|,
+any route out at all. Every view here is column-aligned, and one wrapped line
+shunts every line under it out of true. The content window is YOUR window; the
+layout only borrows it, so nothing global is touched: 'sidescroll', the
+obvious companion to 'nowrap', is a global option and is left exactly as you
+set it. The row detail float (`K`, |spacetime-keys-rows|) is the exception —
+it wraps, because it exists to show a value whole.
+
+The sidebar window is additionally 'winfixwidth', with 'number',
+'relativenumber' and 'signcolumn' off — the four it gives back when it is the
+window left standing (|spacetime-keys-sidebar|).
+
 ==============================================================================
 7. CONFIGURATION                                            *spacetime-config*
                                                      *spacetime-configuration*
@@ -920,7 +943,8 @@ THE ADDRESS, in order:
 2. Otherwise a NICKNAME (`setup({ server = ... })`, `SPACETIMEDB_SERVER`, or
    the project file's `server`) is looked up in `cli.toml`'s
    `[[server_configs]]` blocks. A nickname that is not there is a hard error —
-   the message lists the nicknames that are — whatever supplied it. Silently
+   the message lists the nicknames that are — whatever supplied it, and so is
+   a nickname with no `cli.toml` at all to resolve it against. Silently
    connecting somewhere else would be worse.
 3. Otherwise `cli.toml`'s `default_server`, or the conventional `local` when
    that key is absent. A `default_server` naming a block that does not exist

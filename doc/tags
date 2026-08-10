@@ -18,6 +18,7 @@ spacetime-auth-address	spacetime.txt	/*spacetime-auth-address*
 spacetime-auth-env	spacetime.txt	/*spacetime-auth-env*
 spacetime-auth-identity	spacetime.txt	/*spacetime-auth-identity*
 spacetime-auth-token	spacetime.txt	/*spacetime-auth-token*
+spacetime-buffers	spacetime.txt	/*spacetime-buffers*
 spacetime-commands	spacetime.txt	/*spacetime-commands*
 spacetime-completion	spacetime.txt	/*spacetime-completion*
 spacetime-completion-cache	spacetime.txt	/*spacetime-completion-cache*
@@ -43,6 +44,7 @@ spacetime-keys-schema	spacetime.txt	/*spacetime-keys-schema*
 spacetime-keys-shared	spacetime.txt	/*spacetime-keys-shared*
 spacetime-keys-sidebar	spacetime.txt	/*spacetime-keys-sidebar*
 spacetime-logs-follow	spacetime.txt	/*spacetime-logs-follow*
+spacetime-nowrap	spacetime.txt	/*spacetime-nowrap*
 spacetime-opt-connection	spacetime.txt	/*spacetime-opt-connection*
 spacetime-opt-icons	spacetime.txt	/*spacetime-opt-icons*
 spacetime-opt-identity	spacetime.txt	/*spacetime-opt-identity*

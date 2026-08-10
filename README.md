@@ -15,7 +15,8 @@ file for your server list and token.
 
 > **Status: early.** Two commands in the set are still placeholders and say so
 > when you run them — `:SpacetimeConnect` and `:SpacetimeTables`. Everything
-> else in this README is implemented.
+> else in this README is implemented. Browsing is read-only: there is no way to
+> write a row or call a reducer from here yet.
 
 ## Requirements
 
@@ -66,6 +67,9 @@ lua require("spacetime").setup()
 registered when the plugin loads, and everything else is required lazily on
 first use.
 
+The full reference is in `:help spacetime`, which says everything this README
+does and is the version that ships with the plugin.
+
 ## Quick start
 
 ```vim
@@ -84,8 +88,9 @@ The sidebar then lists the databases belonging to your identity. From there:
   is prefixed 🔒 or 🌎 for private or public.
 - `<CR>` on a table or view runs `SELECT * FROM "table" LIMIT 100` and renders
   the answer in the content window as a grid.
-- `s` on a table or view shows its schema there instead; `gl` shows the logs of
-  the database the cursor is inside, and `gL` follows them live.
+- `s` on a table or view shows its schema there instead; `R` lists the reducers
+  of the database the cursor is inside, `gl` shows that database's logs, and
+  `gL` follows them live.
 - `q` closes the layout and cancels anything in flight; the content window gets
   its original buffer back.
 - `?` prints the sidebar's key map.
@@ -103,19 +108,20 @@ sidebar drops the cache and fetches again.
 
 Four glyphs carry the whole of the sidebar's status:
 
-| Glyph   | Means                                                            |
-| ------- | ---------------------------------------------------------------- |
-| `▸` `▾` | A database, collapsed or expanded                                 |
-| 🔒      | A private table or view — not readable by a connected client      |
-| 🌎      | A public table or view — any client may subscribe to it           |
-| `⏸`     | A paused database                                                 |
+| Glyph   | Means                                                        |
+| ------- | ------------------------------------------------------------ |
+| `▸` `▾` | A database, collapsed or expanded                            |
+| 🔒      | A private table or view — not readable by a connected client |
+| 🌎      | A public table or view — any client may subscribe to it      |
+| `⏸`     | A paused database                                            |
 
 A table's icon comes from its `table_access`, a view's from `is_public`, and
 system tables are marked the same way as any other. Set
-[`icons`](#configuration) to `"ascii"` for `-` and `+` instead, or to `"none"`
-for no icon column at all, on a terminal with no emoji font. Both emoji are
-"wide" by Unicode, so a terminal that draws them narrow draws both narrow and
-the names stay in one column; only the column's position moves.
+[`icons`](#configuration) to `"ascii"` for `+` (public) and `-` (private)
+instead, or to `"none"` for no icon column at all, on a terminal with no emoji
+font. Both emoji are "wide" by Unicode, so a terminal that draws them narrow
+draws both narrow and the names stay in one column; only the column's position
+moves.
 
 A paused database answers 503 on every endpoint, so it is marked `⏸` and asked
 exactly once. Press `r` on it once it has woken up.
@@ -127,19 +133,19 @@ buffer.
 
 ## Commands
 
-| Command                     | Does                                                 |
-| --------------------------- | ---------------------------------------------------- |
-| `:Spacetime`                | Open the browser: layout plus your database list      |
-| `:SpacetimeToggle`          | Open the browser, or close it if it is open           |
-| `:SpacetimeConnect [nick]`  | Switch server by `cli.toml` nickname — *placeholder*  |
-| `:SpacetimeDatabases`       | Open the browser and refetch the database list        |
-| `:SpacetimeTables [db]`     | List a database's tables — *placeholder*              |
-| `:SpacetimeRows {tbl}`      | Browse the rows of `[db.]tbl`                         |
-| `:SpacetimeSchema {tbl}`    | Show the schema of `[db.]tbl`                         |
-| `:SpacetimeReducers [db]`   | List a database's reducers                            |
-| `:SpacetimeLogs[!] [db]`    | Show a database's logs; `!` follows them live         |
-| `:SpacetimeLogsStop`        | Stop following logs                                   |
-| `:SpacetimeStatus`          | Print the resolved connection                         |
+| Command                    | Does                                                 |
+| -------------------------- | ---------------------------------------------------- |
+| `:Spacetime`               | Open the browser: layout plus your database list     |
+| `:SpacetimeToggle`         | Open the browser, or close it if it is open          |
+| `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
+| `:SpacetimeDatabases`      | Open the browser and refetch the database list       |
+| `:SpacetimeTables [db]`    | List a database's tables — *placeholder*             |
+| `:SpacetimeRows {tbl}`     | Browse the rows of `[db.]tbl`                        |
+| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`                        |
+| `:SpacetimeReducers [db]`  | List a database's reducers                           |
+| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` follows them live        |
+| `:SpacetimeLogsStop`       | Stop following logs                                  |
+| `:SpacetimeStatus`         | Print the resolved connection                        |
 
 Every command is `bar`-safe, so it can be chained with `|`.
 
@@ -236,9 +242,8 @@ SQL, both are shown — `ledgerEntry (ledger_entry)`. The SQL endpoint accepts
 either, so neither spelling is a trap.
 
 Nothing in this view is truncated, and the only key it binds is the shared `q`.
-The schema
-is the same one the sidebar caches, so describing a table in a database you
-have already expanded costs no request.
+The schema is the same one the sidebar caches, so describing a table in a
+database you have already expanded costs no request.
 
 ### `:SpacetimeReducers`
 
@@ -395,13 +400,13 @@ In the content window *while it is showing a grid*:
 
 | Key  | Does                                                     |
 | ---- | -------------------------------------------------------- |
-| `s`  | Sort by the column under the cursor; again to reverse it  |
-| `]p` | Next page (100 rows, over the SQL `OFFSET`)               |
-| `[p` | Previous page; nothing on the first one                   |
-| `y`  | Yank the cell under the cursor, untruncated               |
-| `Y`  | Yank the whole row as JSON                                |
-| `K`  | Float the whole row, every column untruncated             |
-| `q`  | Close the layout                                          |
+| `s`  | Sort by the column under the cursor; again to reverse it |
+| `]p` | Next page (100 rows, over the SQL `OFFSET`)              |
+| `[p` | Previous page; nothing on the first one                  |
+| `y`  | Yank the cell under the cursor, untruncated              |
+| `Y`  | Yank the whole row as JSON                               |
+| `K`  | Float the whole row, every column untruncated            |
+| `q`  | Close the layout                                         |
 
 Yanks honour a register prefix (`"+y`) and your `clipboard` setting, exactly as
 any other yank would. In the `K` float, `q` or `<Esc>` closes the float — that
@@ -412,19 +417,19 @@ layout.
 
 In the content window *while it is showing logs*:
 
-| Key | Does                              |
-| --- | --------------------------------- |
-| `>` | Show only more severe log levels   |
-| `<` | Show less severe log levels too    |
-| `q` | Close the layout                   |
+| Key | Does                             |
+| --- | -------------------------------- |
+| `>` | Show only more severe log levels |
+| `<` | Show less severe log levels too  |
+| `q` | Close the layout                 |
 
 ### Schema and reducers
 
 In the content window *while it is showing a schema or a reducer list*:
 
-| Key | Does              |
-| --- | ----------------- |
-| `q` | Close the layout  |
+| Key | Does             |
+| --- | ---------------- |
+| `q` | Close the layout |
 
 The content window is shared by the four views, so each set of keys is
 unbound when another view takes the buffer over. `q` is common to all four —
@@ -439,7 +444,26 @@ with a buffer of yours in it — the one it displaced, failing that its alternat
 (`#`), failing that a fresh empty one — rather than closing Neovim. Every
 window showing a `spacetime://` buffer is dealt with, including a `:split` of
 the content window, and floating windows on screen (a notification popup, say)
-make no difference to any of it.
+make no difference to any of it. A sidebar window that survives that way is
+handed back as an ordinary window, its fixed width and its chrome undone.
+
+### Buffers and windows
+
+The two buffers are named `spacetime://sidebar` and `spacetime://content`, and
+their filetypes are `spacetimetree` and `spacetime` — both stable, so you can
+hang your own autocommands and mappings off either.
+
+A window is held to `nowrap` while it is showing one of them, and gets its own
+`wrap` back the moment it shows anything else — `q`, `:edit`, `:bdelete`, any
+route out. Every view here is column-aligned, and one wrapped line shunts every
+line under it out of true. The content window is your window; the layout only
+borrows it, so nothing global is touched: `sidescroll`, the obvious companion
+to `nowrap`, is a global option and is left exactly as you set it. The `K` row
+float is the exception — it wraps, because it exists to show a value whole.
+
+The sidebar window is additionally `winfixwidth`, with `number`,
+`relativenumber` and `signcolumn` off — the four it gives back when it is the
+window left standing.
 
 ## Configuration
 
@@ -523,7 +547,8 @@ no variable for TLS.
 2. Otherwise a **nickname** (`setup({ server = … })`, `SPACETIMEDB_SERVER`, or
    the project file's `server`) is looked up in `cli.toml`'s
    `[[server_configs]]` blocks. A nickname that is not there is a hard error —
-   the message lists the nicknames that are — whatever supplied it. Silently
+   the message lists the nicknames that are — whatever supplied it, and so is a
+   nickname with no `cli.toml` at all to resolve it against. Silently
    connecting somewhere else would be worse.
 3. Otherwise `cli.toml`'s `default_server`, or the conventional `local` when
    that key is absent. A `default_server` naming a block that does not exist is
