@@ -3,9 +3,11 @@
 A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 
 > **Status: early.** The browsing interface is under construction. The full
-> command set is defined, but most commands are placeholders that say so when
+> command set is defined, but several commands are placeholders that say so when
 > you run them — see [Commands](#commands). What works today is connection
-> resolution (`:SpacetimeStatus`) and the window layout (`:Spacetime`).
+> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`): the
+> layout, and a sidebar listing your databases. Expanding a database to see its
+> tables is the next piece.
 
 ## Requirements
 
@@ -56,10 +58,10 @@ require("spacetime").setup({
 
 | Command                    | Does                                            |
 | -------------------------- | ----------------------------------------------- |
-| `:Spacetime`               | Open (or re-focus) the sidebar/content layout    |
-| `:SpacetimeToggle`         | Toggle the layout — *placeholder*                |
+| `:Spacetime`               | Open the browser: layout plus your database list |
+| `:SpacetimeToggle`         | Open the browser, or close it if it is open      |
 | `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
-| `:SpacetimeDatabases`      | List your databases — *placeholder*              |
+| `:SpacetimeDatabases`      | Open the browser and refetch the database list   |
 | `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
 | `:SpacetimeRows {tbl}`     | Browse rows of `[db.]tbl` — *placeholder*        |
 | `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl` — *placeholder*    |
@@ -85,13 +87,40 @@ run the command once and it will complete thereafter.
 
 ### `:Spacetime`
 
-Opens the browser layout in the current tabpage: a full-height sidebar of the
-configured `side` and `width`, and a content window beside it. Running it again
-re-focuses the existing layout rather than splitting a second one, and a sidebar
-you have resized by hand keeps your width.
+The single front door. It opens the browser layout in the current tabpage — a
+full-height sidebar of the configured `side` and `width`, and a content window
+beside it — then fetches the databases belonging to your identity and renders
+them in the sidebar. Focus is left on the sidebar; the content window shows a
+placeholder until you select something.
 
-The sidebar's database tree is not built yet, so both windows are currently
-empty.
+Running it again re-focuses the existing layout rather than splitting a second
+one, and a sidebar you have resized by hand keeps your width. The database list
+is cached for the session, so a second `:Spacetime` renders it without another
+request; `r` in the sidebar refetches.
+
+If the enclosing repository's `spacetime.json` (or `spacetime.local.json`) names
+a `database`, that database is expanded for you — run `:Spacetime` inside a
+module repo and it lands where you meant.
+
+Anything that goes wrong is written into the sidebar as text: an unreachable
+server, a rejected token, a configuration that will not resolve. You will not
+get a stack trace, and the plugin never raises out of a command.
+
+#### Sidebar keymaps
+
+These are buffer-local to the sidebar.
+
+| Key            | Does                                       |
+| -------------- | ------------------------------------------ |
+| `<CR>` or `o`  | Expand or open the node under the cursor   |
+| `r`            | Refresh: drop the cache and fetch again    |
+| `q`            | Close the layout and cancel any request in flight |
+| `y`            | Yank the node's name                       |
+| `gi`           | Yank the database's identity               |
+| `?`            | Print this key map                         |
+
+`y` and `gi` honour a register prefix, so `"+gi` puts the identity on the system
+clipboard.
 
 ### `:SpacetimeStatus`
 

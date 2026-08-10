@@ -23,7 +23,7 @@
 -- mid-keystroke, which is worse than completing nothing.
 --
 -- **The not-implemented seam.** Most of the command set is scaffolding for
--- roadmap tasks 24-33. Those bodies call `todo()`, which notifies through
+-- roadmap tasks 25-33. Those bodies call `todo()`, which notifies through
 -- `spacetime.logger` — a message, never an error and never a stack trace. A
 -- later task replaces exactly one `run` field in `M.COMMANDS` and deletes its
 -- `todo` call; nothing else about the command (its name, `nargs`, `bang` or
@@ -254,20 +254,17 @@ M.COMMANDS = {
 	{
 		name = "Spacetime",
 		desc = "Open the SpacetimeDB browser",
-		-- The layout primitive (task 21) is finished, so this is real: it opens or
-		-- re-focuses the sidebar/content pair. Filling the sidebar with the
-		-- database tree, and the keymaps that drive it, belong to task 24.
+		-- The single front door: both windows, the database tree, and the keymaps
+		-- that drive it. A cached list renders without a request.
 		run = function()
-			require("spacetime.ui.buffer").open_layout()
+			require("spacetime.ui.sidebar").open()
 		end,
 	},
 	{
 		name = "SpacetimeToggle",
 		desc = "Toggle the SpacetimeDB browser",
-		-- Closing the layout is task 24's `q`, which also has to cancel whatever is
-		-- in flight; a toggle that only half-existed would be worse than none.
 		run = function()
-			todo(":SpacetimeToggle", 24)
+			require("spacetime.ui.sidebar").toggle()
 		end,
 	},
 	{
@@ -282,8 +279,10 @@ M.COMMANDS = {
 	{
 		name = "SpacetimeDatabases",
 		desc = "List the databases for the current identity",
+		-- The sidebar *is* the database list, so this is `:Spacetime` with the
+		-- cache dropped: asking for the list explicitly means asking for a fresh one.
 		run = function()
-			todo(":SpacetimeDatabases", 24)
+			require("spacetime.ui.sidebar").open({ refresh = true })
 		end,
 	},
 	{

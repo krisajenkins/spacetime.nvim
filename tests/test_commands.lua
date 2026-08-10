@@ -185,8 +185,9 @@ T["an unimplemented command notifies rather than raising"] = function()
 end
 
 T["every unimplemented command notifies once, and none of them raise"] = function()
-	-- `:Spacetime` is excluded because it really does something, and
-	-- `:SpacetimeStatus` has a file of its own.
+	-- The browser commands (`:Spacetime`, `:SpacetimeToggle`,
+	-- `:SpacetimeDatabases`) are excluded because they really do something — see
+	-- tests/test_tree_ui.lua — and `:SpacetimeStatus` has a file of its own.
 	child.lua(
 		[[
 		for _, command in ipairs(...) do
@@ -195,10 +196,8 @@ T["every unimplemented command notifies once, and none of them raise"] = functio
 	]],
 		{
 			{
-				"SpacetimeToggle",
 				"SpacetimeConnect",
 				"SpacetimeConnect testnet",
-				"SpacetimeDatabases",
 				"SpacetimeTables spacegym",
 				"SpacetimeRows spacegym.member",
 				"SpacetimeSchema spacegym.member",
@@ -207,7 +206,7 @@ T["every unimplemented command notifies once, and none of them raise"] = functio
 		}
 	)
 
-	expect.equality(#child.lua_get("NOTIFIED"), 8)
+	expect.equality(#child.lua_get("NOTIFIED"), 6)
 end
 
 T[":SpacetimeLogs parses its bang"] = function()
@@ -220,8 +219,18 @@ T[":SpacetimeLogs parses its bang"] = function()
 	expect.equality(notified[2]:find("SpacetimeLogs!", 1, true) ~= nil, true)
 end
 
+-- What the sidebar then *does* is tests/test_tree_ui.lua's business; all that is
+-- asserted here is that the command reaches it. The transport is stubbed anyway,
+-- so a developer shell with a `SPACETIMEDB_TOKEN` in it cannot put this case on
+-- the wire.
 T[":Spacetime opens the layout"] = function()
-	child.lua([[ vim.cmd('Spacetime') ]])
+	child.lua([[
+		package.loaded['spacetime.lib.http'] = {
+			request = function() return { kill = function() end } end,
+			stream = function() return { kill = function() end } end,
+		}
+		vim.cmd('Spacetime')
+	]])
 
 	local names = child.lua_get([[
 		vim.tbl_map(function(winid)

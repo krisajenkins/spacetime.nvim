@@ -8,8 +8,9 @@ CONTENTS                                                   *spacetime-contents*
 3. Installation ...................... |spacetime-installation|
 4. Configuration ..................... |spacetime-configuration|
 5. Commands .......................... |spacetime-commands|
-6. Lua API ........................... |spacetime-api|
-7. About ............................. |spacetime-about|
+6. Sidebar ........................... |spacetime-sidebar|
+7. Lua API ........................... |spacetime-api|
+8. About ............................. |spacetime-about|
 
 ==============================================================================
 1. INTRODUCTION                                        *spacetime-introduction*
@@ -17,10 +18,11 @@ CONTENTS                                                   *spacetime-contents*
 spacetime.nvim integrates the SpacetimeDB CLI with Neovim.
 
 The plugin is still early: the browsing interface is under construction. The
-full command set is defined and completes its arguments, but most commands are
-placeholders that say so when you run them — see |spacetime-commands|. What
-works today is connection resolution (|:SpacetimeStatus|) and the window
-layout (|:Spacetime|).
+full command set is defined and completes its arguments, but several commands
+are placeholders that say so when you run them — see |spacetime-commands|.
+What works today is connection resolution (|:SpacetimeStatus|) and the browser
+itself (|:Spacetime|): the window layout, and a sidebar listing your
+databases. Expanding a database to see its tables is the next piece.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -118,10 +120,10 @@ width ~
 
 The plugin defines ten commands: >
 
-    :Spacetime                  open (or re-focus) the layout
-    :SpacetimeToggle            toggle the layout          (placeholder)
+    :Spacetime                  open the browser
+    :SpacetimeToggle            open the browser, or close it
     :SpacetimeConnect [nick]    switch server by nickname  (placeholder)
-    :SpacetimeDatabases         list your databases        (placeholder)
+    :SpacetimeDatabases         refetch your database list
     :SpacetimeTables [db]       list a database's tables   (placeholder)
     :SpacetimeRows {tbl}        browse rows of [db.]tbl    (placeholder)
     :SpacetimeSchema {tbl}      schema of [db.]tbl         (placeholder)
@@ -159,21 +161,41 @@ tokens in that file are never touched by completion.
     Open the SpacetimeDB browser in the current tabpage: a full-height sidebar
     on the side given by |spacetime-opt-side|, at |spacetime-opt-width|
     columns, and a content window beside it. The current window becomes the
-    content window; no new tabpage is created. Focus is left on the sidebar.
+    content window; no new tabpage is created. Focus is left on the sidebar,
+    where the keys of |spacetime-sidebar| apply.
+
+    The sidebar is then filled with the databases belonging to your identity,
+    and the content window shows a placeholder until you select something.
 
     Idempotent: running it again re-focuses the existing layout rather than
     splitting a second one, and a sidebar you have resized by hand keeps your
     width. If only the sidebar has been closed, only the sidebar comes back.
+    The database list is cached for the session, so the second run renders it
+    without another request; `r` in the sidebar fetches it again.
 
-    The sidebar's database tree is not built yet, so both windows are
-    currently empty.
+    If the enclosing repository's `spacetime.json` (or `spacetime.local.json`)
+    names a `database`, that database is expanded for you, so running
+    |:Spacetime| inside a module repository lands where you meant.
+
+    Every failure — an unreachable server, a rejected token, a configuration
+    that will not resolve — is written into the sidebar as text. The command
+    never raises and never shows you a stack trace.
 
                                                              *:SpacetimeToggle*
 :SpacetimeToggle
-                                                            *:SpacetimeConnect*
-:SpacetimeConnect [{nickname}]
+
+    Open the browser if it is closed, close it if it is open. Closing cancels
+    any request still in flight, exactly as `q` does.
+
                                                           *:SpacetimeDatabases*
 :SpacetimeDatabases
+
+    Open the browser and fetch the database list again, cache or no cache.
+    The sidebar *is* the database list, so this is |:Spacetime| with the
+    cached answer thrown away first.
+
+                                                            *:SpacetimeConnect*
+:SpacetimeConnect [{nickname}]
                                                              *:SpacetimeTables*
 :SpacetimeTables [{database}]
                                                                *:SpacetimeRows*
@@ -240,7 +262,53 @@ tokens in that file are never touched by completion.
     The same fields appear under |:checkhealth| spacetime.
 
 ==============================================================================
-6. LUA API                                                     *spacetime-api*
+6. SIDEBAR                                                 *spacetime-sidebar*
+
+The sidebar lists the databases your identity owns, one per line, each with a
+marker: `▸` collapsed, `▾` expanded, `⏸` paused. Its 'filetype' is
+`spacetimetree`, so you can hang your own autocommands or mappings off it.
+
+KEYMAPS                                            *spacetime-sidebar-keymaps*
+
+All of these are buffer-local to the sidebar; nothing is mapped globally. >
+
+    <CR> / o    expand or open the node under the cursor
+    r           refresh: drop the cache and fetch again
+    q           close the layout
+    y           yank the node's name
+    gi          yank the database identity
+    ?           show this key map
+<
+Press `?` in the sidebar to print the same list; it comes from the same table
+the mappings are built from, so the two cannot disagree.
+
+`y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
+system clipboard.
+
+`r` drops the cached database list and fetches it again. On a database node it
+also drops that database's own cached schema and rows — the cache has no
+expiry, so this is how you ask for fresh data.
+
+`q` closes both windows *and* cancels every request still in flight, so a
+response cannot arrive after you have closed the browser. The content window
+is handed back the buffer it displaced. When the layout is all that is left of
+the tabpage, that window stays open with your buffer in it rather than closing
+Neovim.
+
+ERRORS                                              *spacetime-sidebar-errors*
+
+Failures render as sidebar text, never as an error message and never as a
+stack trace: >
+
+    error: unauthorized: the server rejected the token
+<
+When only part of the fetch fails — the list arrives but one database's names
+do not — the databases that did arrive are still listed, and the one that
+failed is expanded to show its own error. Partial data is never thrown away to
+report an error, and an error is never swallowed to show partial data.
+
+==============================================================================
+7. LUA API                                                     *spacetime-api*
 
                                                             *spacetime.setup()*
 require("spacetime").setup({opts})
@@ -256,7 +324,7 @@ require("spacetime").config
     Read-only in practice — mutating it is unsupported.
 
 ==============================================================================
-7. ABOUT                                                     *spacetime-about*
+8. ABOUT                                                     *spacetime-about*
 
 Source and issue tracker:
 https://github.com/krisajenkins/spacetime.nvim

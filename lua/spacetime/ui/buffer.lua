@@ -132,9 +132,13 @@ function M.set_lines(bufnr, lines, first, last)
 end
 
 ---The window in the current tabpage showing `bufnr`, if any.
+---
+---Public because it is also how a caller asks "is the layout open?" — the same
+---question `open_layout` answers for itself, and one that must be answered the
+---same way (by what is on screen now) rather than from a remembered handle.
 ---@param bufnr integer
 ---@return integer|nil winid
-local function window_showing(bufnr)
+function M.window_showing(bufnr)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 		if vim.api.nvim_win_get_buf(winid) == bufnr then
 			return winid
@@ -181,8 +185,8 @@ function M.open_layout()
 	local sidebar_buf = M.get(M.SIDEBAR_NAME, { filetype = M.SIDEBAR_FILETYPE })
 	local content_buf = M.get(M.CONTENT_NAME, { filetype = M.CONTENT_FILETYPE })
 
-	local sidebar_win = window_showing(sidebar_buf)
-	local content_win = window_showing(content_buf)
+	local sidebar_win = M.window_showing(sidebar_buf)
+	local content_win = M.window_showing(content_buf)
 
 	if not content_win then
 		-- The current window becomes the content window, displacing whatever it
