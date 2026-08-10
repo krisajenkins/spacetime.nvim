@@ -120,11 +120,29 @@ local function check_curl()
 	h.ok(string.format("curl %s (%s)", version, curl_path))
 end
 
+-- The same report `:SpacetimeStatus` prints, from the same function, so the two
+-- cannot drift. `h.info` rather than `h.ok` — these are facts about the user's
+-- configuration, not checks that passed — and `h.warn` rather than `h.error` for
+-- the lines that failed to resolve: no token and no cli.toml is a perfectly
+-- normal state for a fresh install, and `:checkhealth` should not call it broken.
+local function check_connection()
+	h.start("connection")
+	for _, field in ipairs(require("spacetime.status").fields(0)) do
+		local line = string.format("%s: %s", field.label, field.value)
+		if field.ok then
+			h.info(line)
+		else
+			h.warn(line)
+		end
+	end
+end
+
 function M.check()
 	h.start("spacetime")
 	check_neovim()
 	check_spacetime()
 	check_curl()
+	check_connection()
 end
 
 return M

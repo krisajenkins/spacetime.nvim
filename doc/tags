@@ -1,6 +1,8 @@
+:SpacetimeStatus	spacetime.txt	/*:SpacetimeStatus*
 :checkhealth-spacetime	spacetime.txt	/*:checkhealth-spacetime*
 spacetime-about	spacetime.txt	/*spacetime-about*
 spacetime-api	spacetime.txt	/*spacetime-api*
+spacetime-commands	spacetime.txt	/*spacetime-commands*
 spacetime-configuration	spacetime.txt	/*spacetime-configuration*
 spacetime-contents	spacetime.txt	/*spacetime-contents*
 spacetime-health	spacetime.txt	/*spacetime-health*

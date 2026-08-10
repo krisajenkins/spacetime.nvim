@@ -2,8 +2,8 @@
 
 A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 
-> **Status: scaffolding.** The build, test, lint and CI infrastructure is in
-> place; the plugin itself does nothing yet.
+> **Status: early.** The browsing interface is under construction. What works
+> today is connection resolution, which `:SpacetimeStatus` reports on.
 
 ## Requirements
 
@@ -11,7 +11,8 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 - The `spacetime` CLI >= 2.0.0 on your `PATH`
 - `curl` on your `PATH` — used for all HTTP requests to SpacetimeDB
 
-Run `:checkhealth spacetime` to verify all three.
+Run `:checkhealth spacetime` to verify all three. It also mirrors the fields
+`:SpacetimeStatus` prints, from the same code, so the two cannot disagree.
 
 ## Installation
 
@@ -40,6 +41,38 @@ require("spacetime").setup({
 - `log_level` — minimum severity for the plugin's own `vim.notify()` messages.
 - `identity` — overrides the identity derived from your token's claims; a
   last-resort escape hatch.
+
+## Commands
+
+### `:SpacetimeStatus`
+
+Prints the connection the plugin has resolved for the current buffer:
+
+```
+server:       maincloud (https://maincloud.spacetimedb.com:443)
+identity:     c2005efe02e92547ddd4bd106e84a281ead78a30fa26f42e619d70b20917c3dd
+token:        present
+cli.toml:     /home/you/.config/spacetime/cli.toml
+project:      /path/to/repo/spacetime.json (database: spacegym)
+```
+
+- `server` — the nickname you asked for (or the hostname, if you named one by
+  hand) and the resolved base URL, whose scheme carries TLS and whose port is
+  always explicit.
+- `identity` — your hex identity, derived from the token's `iss`/`sub` claims
+  or taken from the `identity` option. A derivation failure prints its reason
+  here instead of aborting the command.
+- `token` — always exactly `present` or `absent`. **The token is never
+  printed**, not even a prefix of it; the command is meant to be safe to paste
+  into a bug report.
+- `cli.toml` — where the SpacetimeDB CLI's config is, with `(not found)`
+  appended if there is no file there. Not having one is fine.
+- `project` — the `spacetime.json` / `spacetime.local.json` at the enclosing
+  repository root and the database they name, or `none`.
+
+If the configuration cannot be resolved at all — an unknown server nickname,
+say — the error appears on the `server` line and the rest is still printed. A
+broken configuration is exactly what you would run this to diagnose.
 
 ## Development
 

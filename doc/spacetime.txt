@@ -7,16 +7,18 @@ CONTENTS                                                   *spacetime-contents*
 2. Requirements ...................... |spacetime-requirements|
 3. Installation ...................... |spacetime-installation|
 4. Configuration ..................... |spacetime-configuration|
-5. Lua API ........................... |spacetime-api|
-6. About ............................. |spacetime-about|
+5. Commands .......................... |spacetime-commands|
+6. Lua API ........................... |spacetime-api|
+7. About ............................. |spacetime-about|
 
 ==============================================================================
 1. INTRODUCTION                                        *spacetime-introduction*
 
 spacetime.nvim integrates the SpacetimeDB CLI with Neovim.
 
-The plugin is currently scaffolding: the build, test and documentation
-infrastructure is in place, but no user-facing commands exist yet.
+The plugin is still early: the browsing interface is under construction. What
+works today is connection resolution — see |:SpacetimeStatus|, which reports
+the server, identity and configuration files the plugin has settled on.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -38,6 +40,9 @@ It reports:
 • Whether the `spacetime` executable is on your PATH, and its version (warns
   if older than the minimum supported).
 • Whether `curl` is on your PATH, and its version.
+• A "connection" section carrying the same five fields as |:SpacetimeStatus|,
+  from the same code, so the two cannot disagree. It never prints your token
+  either.
 
 ==============================================================================
 3. INSTALLATION                                        *spacetime-installation*
@@ -80,7 +85,55 @@ identity ~
     `"c200..."`) skips it entirely.
 
 ==============================================================================
-5. LUA API                                                     *spacetime-api*
+5. COMMANDS                                               *spacetime-commands*
+
+                                                            *:SpacetimeStatus*
+:SpacetimeStatus
+
+    Print the connection the plugin has resolved for the current buffer, as
+    five lines: >
+
+    server:       maincloud (https://maincloud.spacetimedb.com:443)
+    identity:     c2005efe02e92547ddd4bd106e84a281ead78a30fa26f42e6...
+    token:        present
+    cli.toml:     /home/you/.config/spacetime/cli.toml
+    project:      /path/to/repo/spacetime.json (database: spacegym)
+<
+    server ~
+        The nickname you asked for, or the hostname if you named one by hand,
+        followed by the base URL. The URL carries both the scheme (so `https`
+        means TLS) and an explicit port.
+
+    identity ~
+        Your 64-character hex identity, derived from the token's `iss` and
+        `sub` claims, or taken from |spacetime-opt-identity| if you set it. If
+        the derivation fails, the reason is printed on this line rather than
+        aborting the command — the remaining lines are still useful.
+
+    token ~
+        Always exactly `present` or `absent`. The token itself is never
+        printed, not even a prefix of it: this command is meant to be safe to
+        paste into a bug report.
+
+    cli.toml ~
+        The path to the SpacetimeDB CLI's config, with `(not found)` appended
+        when there is no file there. Not having one is fine — environment
+        variables and |spacetime.setup()| can supply everything.
+
+    project ~
+        The `spacetime.json` / `spacetime.local.json` found at the enclosing
+        repository root, and the database they name; `none` when there are
+        none.
+
+    If the configuration cannot be resolved at all — an unknown server
+    nickname, say — the error appears on the `server` line and the command
+    still prints the rest. It never fails outright, because a broken
+    configuration is exactly what you would be running it to diagnose.
+
+    The same fields appear under |:checkhealth| spacetime.
+
+==============================================================================
+6. LUA API                                                     *spacetime-api*
 
                                                             *spacetime.setup()*
 require("spacetime").setup({opts})
@@ -96,7 +149,7 @@ require("spacetime").config
     Read-only in practice — mutating it is unsupported.
 
 ==============================================================================
-6. ABOUT                                                     *spacetime-about*
+7. ABOUT                                                     *spacetime-about*
 
 Source and issue tracker:
 https://github.com/krisajenkins/spacetime.nvim

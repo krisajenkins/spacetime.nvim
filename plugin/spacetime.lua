@@ -16,3 +16,10 @@ vim.g.loaded_spacetime = 1
 -- names plus two nvim_set_hl loops — cheap and dependency-free, so it does not
 -- break the "module stays lazy" rule above.
 require("spacetime.ui.highlights").register()
+
+-- Commands are registered eagerly but implemented lazily: the body requires its
+-- module on invocation, so `:SpacetimeStatus` exists from startup without the
+-- config, cli.toml and identity code being loaded until someone runs it.
+vim.api.nvim_create_user_command("SpacetimeStatus", function()
+	require("spacetime.status").show()
+end, { desc = "Show the resolved SpacetimeDB connection", bar = true })
