@@ -1,27 +1,43 @@
 # spacetime.nvim
 
-A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
+A [SpacetimeDB](https://spacetimedb.com) browser inside Neovim.
 
-> **Status: early.** The browsing interface is under construction. The full
-> command set is defined, but several commands are placeholders that say so when
-> you run them — see [Commands](#commands). What works today is connection
-> resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`,
-> `:SpacetimeRows`, `:SpacetimeSchema` and `:SpacetimeLogs`): the layout, a
-> sidebar listing your databases and the tables and views inside them, `<CR>` on
-> a table to see its rows — sorted, paged, yanked or floated in full — the schema
-> of a table alongside the module's reducers, and a database's logs, either as a
-> static tail or followed live with `:SpacetimeLogs!`.
+`:Spacetime` opens a two-window layout: a sidebar listing the databases your
+identity owns, and a content window beside it. Expand a database to see its
+tables, views and `st_*` system tables; press `<CR>` on one to browse its rows
+as an aligned, sortable, pageable grid; describe its schema and the module's
+reducers; or tail a database's logs, either as a static backlog or followed
+live.
+
+The plugin talks to SpacetimeDB's HTTP API directly, over `curl`. It never
+shells out to the `spacetime` CLI to browse — it only reads the CLI's config
+file for your server list and token.
+
+> **Status: early.** Two commands in the set are still placeholders and say so
+> when you run them — `:SpacetimeConnect` and `:SpacetimeTables`. Everything
+> else in this README is implemented.
 
 ## Requirements
 
-- Neovim >= 0.11.0
-- The `spacetime` CLI >= 2.0.0 on your `PATH`
-- `curl` on your `PATH` — used for all HTTP requests to SpacetimeDB
+- **Neovim >= 0.11.0.**
+- **`curl` on your `PATH`** — it carries every HTTP request the plugin makes.
+- **A token.** Normally `~/.config/spacetime/cli.toml`, which
+  `spacetime login` writes. The `SPACETIMEDB_TOKEN` environment variable or a
+  `token` passed to `setup()` work just as well — see
+  [How auth resolves](#how-auth-resolves).
+- **No Lua dependencies.** Nothing to install alongside it; no `plenary`, no
+  parser, no compiled component.
 
-Run `:checkhealth spacetime` to verify all three. It also mirrors the fields
-`:SpacetimeStatus` prints, from the same code, so the two cannot disagree.
+The `cli.toml` path is the XDG one on every platform, including macOS:
+`$XDG_CONFIG_HOME/spacetime/cli.toml`, falling back to `~/.config/`.
 
-## Installation
+Run `:checkhealth spacetime` to verify the setup. It checks the Neovim version,
+the `spacetime` CLI (>= 2.0.0 — reported as an error when it is missing, since
+it is how you log in, though the plugin itself never runs it), `curl`, and then
+prints the same connection fields as `:SpacetimeStatus`, from the same code, so
+the two cannot disagree.
+
+## Install
 
 With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
@@ -34,181 +50,143 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-## Configuration
+With [vim-plug](https://github.com/junegunn/vim-plug):
 
-`setup()` takes an optional table. Every field is optional.
-
-```lua
-require("spacetime").setup({
-  log_level = vim.log.levels.INFO,
-  identity = nil,
-  side = "left",
-  width = 30,
-  log_lines = 200,
-})
+```vim
+Plug 'krisajenkins/spacetime.nvim'
 ```
 
-- `log_level` — minimum severity for the plugin's own `vim.notify()` messages.
-- `identity` — overrides the identity derived from your token's claims; a
-  last-resort escape hatch.
-- `side` — which side of the tabpage the sidebar opens on: `"left"` (the
-  default) or `"right"`.
-- `width` — how wide the sidebar is: a number of columns (`30` by default), or a
-  percentage of the screen as a string, e.g. `"20%"`. A percentage is resolved
-  against the terminal's current width each time the layout is opened, and never
-  produces a sidebar narrower than 10 columns.
-- `log_lines` — how much log backlog `:SpacetimeLogs` asks the server for (`200`
-  by default). Any whole number of lines, zero or more.
+and after `plug#end()`:
+
+```vim
+lua require("spacetime").setup()
+```
+
+`setup()` is optional if you are happy with the defaults: the commands are
+registered when the plugin loads, and everything else is required lazily on
+first use.
+
+## Quick start
+
+```vim
+:Spacetime
+```
+
+That opens the full layout in the current tabpage: a full-height sidebar on the
+configured side, and a content window beside it (the current window becomes the
+content window, displacing whatever it was showing). Focus is left on the
+sidebar. The content window shows a placeholder until you select something.
+
+The sidebar then lists the databases belonging to your identity. From there:
+
+- `<CR>` on a database expands it, fetching its schema once, and lists its
+  tables, then its views, then SpacetimeDB's own `st_*` system tables.
+- `<CR>` on a table or view runs `SELECT * FROM "table" LIMIT 100` and renders
+  the answer in the content window as a grid.
+- `q` closes the layout and cancels anything in flight; the content window gets
+  its original buffer back.
+- `?` prints the sidebar's key map.
+
+If the enclosing repository's `spacetime.json` (or `spacetime.local.json`)
+names a `database`, that database is expanded for you — run `:Spacetime` inside
+a module repo and it lands where you meant.
+
+Running `:Spacetime` again re-focuses the existing layout rather than splitting
+a second one, and a sidebar you have resized by hand keeps your width. The
+database list and each database's schema are cached for the session; `r` in the
+sidebar drops the cache and fetches again.
+
+A paused database answers 503 on every endpoint, so it is marked `⏸` and asked
+exactly once. Press `r` on it once it has woken up.
+
+Nothing here raises at you. An unreachable server, a rejected token, a
+configuration that will not resolve and a SQL error from the server (which
+arrives as plain text and is shown verbatim) are all rendered as text in the
+buffer.
 
 ## Commands
 
-| Command                    | Does                                            |
-| -------------------------- | ----------------------------------------------- |
-| `:Spacetime`               | Open the browser: layout plus your database list |
-| `:SpacetimeToggle`         | Open the browser, or close it if it is open      |
-| `:SpacetimeConnect [nick]` | Switch server by `cli.toml` nickname — *placeholder* |
-| `:SpacetimeDatabases`      | Open the browser and refetch the database list   |
-| `:SpacetimeTables [db]`    | List a database's tables — *placeholder*         |
-| `:SpacetimeRows {tbl}`     | Open the browser on the rows of `[db.]tbl`       |
-| `:SpacetimeSchema {tbl}`   | Show the schema of `[db.]tbl`, and the reducers  |
-| `:SpacetimeLogs[!] [db]`   | Show a database's logs; `!` follows them live    |
-| `:SpacetimeLogsStop`       | Stop following logs                              |
-| `:SpacetimeStatus`         | Print the resolved connection                    |
+| Command                     | Does                                                 |
+| --------------------------- | ---------------------------------------------------- |
+| `:Spacetime`                | Open the browser: layout plus your database list      |
+| `:SpacetimeToggle`          | Open the browser, or close it if it is open           |
+| `:SpacetimeConnect [nick]`  | Switch server by `cli.toml` nickname — *placeholder*  |
+| `:SpacetimeDatabases`       | Open the browser and refetch the database list        |
+| `:SpacetimeTables [db]`     | List a database's tables — *placeholder*              |
+| `:SpacetimeRows {tbl}`      | Browse the rows of `[db.]tbl`                         |
+| `:SpacetimeSchema {tbl}`    | Show the schema of `[db.]tbl`, and the reducers       |
+| `:SpacetimeLogs[!] [db]`    | Show a database's logs; `!` follows them live         |
+| `:SpacetimeLogsStop`        | Stop following logs                                   |
+| `:SpacetimeStatus`          | Print the resolved connection                         |
 
-A *placeholder* command exists, completes its argument and tells you it is not
-implemented yet. It never errors — the feature simply has not landed.
+Every command is `bar`-safe, so it can be chained with `|`.
+
+A ***placeholder*** command exists, completes its argument, and notifies you
+that it is not implemented yet. It never errors and never changes anything —
+`:SpacetimeConnect` does *not* switch servers today, and `:SpacetimeTables`
+does not list anything. Use `setup({ server = … })`, `SPACETIMEDB_SERVER` or a
+project file to choose a server, and the sidebar to see a database's tables.
+
+Where a command takes `[db.]tbl`, the database may be left off
+(`:SpacetimeRows member`), in which case it is the one the connection resolved
+to — usually your project's `spacetime.json`. With neither, the command says so
+and does nothing. Either spelling of the table works, the source one
+(`ledgerEntry`) or the SQL one (`ledger_entry`).
 
 ### Completion
 
-`<Tab>` completes server nicknames from `cli.toml`, and database and table names
-**from what the plugin has already fetched this session**. Completion never
-makes a network request, so a name the plugin has not seen yet will not appear;
-run the command once and it will complete thereafter.
+`<Tab>` completes server nicknames from `cli.toml`, and database and table
+names **from what the plugin has already fetched this session**. Completion
+never makes a network request, so a name the plugin has not seen yet will not
+appear; run the command once and it will complete thereafter.
 
-- `:SpacetimeConnect` — nicknames from your `cli.toml`.
+- `:SpacetimeConnect` — nicknames from your `cli.toml`. A local file read; the
+  tokens in that file are never touched.
 - `:SpacetimeTables`, `:SpacetimeLogs` — cached database names.
 - `:SpacetimeRows`, `:SpacetimeSchema` — cached `db.table`, in both the source
   and the SQL spelling where they differ (`spacegym.ledgerEntry` and
-  `spacegym.ledger_entry`).
+  `spacegym.ledger_entry`). Only the qualified form is offered.
 
-### `:Spacetime`
+### `:SpacetimeRows` — the grid
 
-The single front door. It opens the browser layout in the current tabpage — a
-full-height sidebar of the configured `side` and `width`, and a content window
-beside it — then fetches the databases belonging to your identity and renders
-them in the sidebar. Focus is left on the sidebar; the content window shows a
-placeholder until you select something.
+The badge on line one says how many rows are on screen, how far into the table
+they start, and how long the server said the query took:
 
-Running it again re-focuses the existing layout rather than splitting a second
-one, and a sidebar you have resized by hand keeps your width. The database list
-is cached for the session, so a second `:Spacetime` renders it without another
-request; `r` in the sidebar refetches.
+```
+100 rows · offset 100 · 1.4ms
+```
 
-If the enclosing repository's `spacetime.json` (or `spacetime.local.json`) names
-a `database`, that database is expanded for you — run `:Spacetime` inside a
-module repo and it lands where you meant.
+Below it: a header row, then one line per row, columns aligned by display width
+so `£` and `🎟` still line up. Primary-key headers, `NULL`s, identities,
+timestamps and truncated cells are highlighted.
 
-`<CR>` on a database fetches its schema and lists its tables, then its views,
-then SpacetimeDB's own `st_*` tables. That schema is cached per database for the
-session, so expanding it again is instant and puts nothing on the wire; `r`
-drops it and fetches again. A database that is paused answers nothing, so it is
-marked `⏸` and asked exactly once — press `r` on it once it has woken up.
+- `s` sorts by the column the cursor is in, and again reverses it. The sort is
+  on the values the server sent, not on the text they render as — `9` sorts
+  before `10`, a timestamp sorts by the instant — and `NULL`s go last whichever
+  way round the column is. Nothing is refetched; only the painting order
+  changes, and the cursor stays on the row it was on.
+- `]p` and `[p` turn the page, 100 rows at a time, by moving the SQL `OFFSET`
+  and asking again. `[p` on the first page does nothing, and `]p` stops at a
+  page the server returned short. Holding `]p` down is safe: every page is
+  requested under the same key, so the pages you skipped are cancelled and only
+  the one you land on is painted. A new page arrives in the server's order, so
+  the sort applies to the page you are looking at.
+- Cells wider than 40 columns are cut with a `…`, but that is the grid, not the
+  data: `y` yanks the whole value of the cell under the cursor, `Y` yanks the
+  row as JSON built from the values the server sent, and `K` floats every
+  column of the row untruncated.
 
-`<CR>` on a table or a view runs `SELECT * FROM "table" LIMIT 100` and renders
-the answer in the content window as a grid: a badge line, a header row, then one
-line per row, columns aligned by display width so `£` and `🎟` still line up.
-Primary-key headers, `NULL`s, identities, timestamps and truncated cells are
-highlighted. The badge says how many rows are on screen, how far into the table
-they start, and how long the server said the query took (`100 rows · offset 100
-· 1.4ms`). The rows are cached per table for the session, and `r` in the sidebar
-drops that database's rows along with its schema.
-
-`s` in the grid sorts by the column the cursor is in, and pressing it again
-reverses that column. The sort is on the values the server sent, not on the text
-they are rendered as — `9` sorts before `10`, and a timestamp column sorts by
-the instant rather than by the string — and `NULL`s go last whichever way round
-the column is. Nothing is refetched and no row is rewritten; only the order the
-rows are painted in changes, and the cursor stays on the row it was on.
-
-`]p` and `[p` turn the page, 100 rows at a time, by moving the SQL `OFFSET` and
-asking again. `[p` on the first page does nothing rather than asking for a
-negative offset, and `]p` stops at a page the server returned short, because
-there is nothing after it. Holding `]p` down is safe: every page of a table is
-requested under the same key, so the pages you skipped past are cancelled and
-only the one you land on is painted. A page arrives in the order the server sent
-it, so a sort applies to the page you are looking at.
-
-Cells wider than 40 columns are cut with a `…`, but that is only the grid: `K`
-opens a float showing every column of the row under the cursor in full, `y`
-yanks the whole value of the cell under the cursor — never the truncated text —
-and `Y` yanks the whole row as JSON, built from the values the server sent
-rather than from their rendering. Both yanks go to the unnamed register `"`,
-honouring a register prefix (`"+y`) and your `clipboard` setting exactly as any
-other yank would.
-
-Switching tables quickly is safe: opening a second table cancels the first
-table's request, and a response that arrives after you have moved on is dropped
+Rows are cached per table for the session (page one only); `r` in the sidebar
+drops that database's rows along with its schema. Switching tables quickly is
+safe: opening a second table cancels the first, and a late response is dropped
 rather than painted over the table you are now looking at.
-
-Anything that goes wrong is written into the buffer as text: an unreachable
-server, a rejected token, a configuration that will not resolve, a SQL error
-from the server (which arrives as plain text and is shown verbatim). You will
-not get a stack trace, and the plugin never raises out of a command.
-
-#### Sidebar keymaps
-
-These are buffer-local to the sidebar.
-
-| Key            | Does                                       |
-| -------------- | ------------------------------------------ |
-| `<CR>` or `o`  | Expand or open the node under the cursor   |
-| `r`            | Refresh: drop the cache and fetch again    |
-| `q`            | Close the layout and cancel any request in flight |
-| `y`            | Yank the node's name                       |
-| `gi`           | Yank the database's identity               |
-| `?`            | Print this key map                         |
-
-`y` and `gi` honour a register prefix, so `"+gi` puts the identity on the system
-clipboard.
-
-#### Content-window keymaps
-
-These are buffer-local to the content window *while it is showing a grid*. The
-content window is shared — the schema view paints into the same buffer — so
-these keys go away when another view takes it over, and come back with the next
-table you open.
-
-| Key   | Does                                                    |
-| ----- | ------------------------------------------------------- |
-| `s`   | Sort by the column under the cursor; again to reverse it |
-| `]p`  | Next page (100 rows, over the SQL `OFFSET`)              |
-| `[p`  | Previous page; nothing on the first one                  |
-| `y`   | Yank the cell under the cursor, untruncated              |
-| `Y`   | Yank the whole row as JSON                               |
-| `K`   | Float the whole row, every column untruncated            |
-
-While the content window is showing logs instead, it binds `<` and `>` — the
-level filter, see [`:SpacetimeLogs`](#spacetimelogs) — and none of the above.
-
-### `:SpacetimeRows`
-
-`:SpacetimeRows spacegym.member` opens the browser and puts that table's rows in
-the content window, without going through the sidebar to find it. The database
-may be left off — `:SpacetimeRows member` — in which case it is the one your
-project's `spacetime.json` names; with neither, the command says so and does
-nothing. Either spelling of the table works, source (`ledgerEntry`) or SQL
-(`ledger_entry`).
-
-Everything under `:Spacetime` above then applies: the same grid, the same
-keymaps, the same cache.
 
 ### `:SpacetimeSchema`
 
 `:SpacetimeSchema spacegym.ledgerEntry` describes one table in the content
 window: its columns with their resolved types, then its indexes, its
-constraints, and the whole module's reducers. The database may be left off and
-either spelling of the table works, exactly as for `:SpacetimeRows`. Views are
-described too — a view has neither indexes nor constraints, and says so.
+constraints, and the whole module's reducers. Views are described too — a view
+has neither indexes nor constraints, and says so.
 
 ```
 ledgerEntry (ledger_entry)
@@ -238,21 +216,18 @@ The SQL endpoint accepts either, so neither spelling is a trap.
 
 A reducer is marked `ClientCallable` or `Private` as the server reports it, and
 a `Private` one is greyed out rather than hidden: it is part of the module, it
-is simply not yours to call. Servers older than SpacetimeDB 2.0.4 answer with a
-schema that has no visibility field at all, and there the marker is **omitted
-entirely** rather than guessed at — an unknown visibility means "assume
-callable", because labelling every reducer `Private` would be a claim about
-your module rather than a report of what the server said.
+is simply not yours to call. Older servers answer with a schema that carries no
+visibility field at all, and there the marker is **omitted entirely** rather
+than guessed at.
 
 Nothing in this view is truncated, and it binds no keys of its own. The schema
-is the same one the sidebar caches, so describing a table in a database you have
-already expanded costs no request; `r` in the sidebar drops it.
+is the same one the sidebar caches, so describing a table in a database you
+have already expanded costs no request.
 
 ### `:SpacetimeLogs`
 
-`:SpacetimeLogs spacegym` opens the browser and puts that database's logs in the
-content window: the last `log_lines` entries, oldest first, as level, timestamp
-and message.
+`:SpacetimeLogs spacegym` puts that database's logs in the content window: the
+last `log_lines` entries, oldest first, as level, timestamp and message.
 
 ```
 spacegym · 11 lines · asked for 200 · level ≥ Trace
@@ -260,67 +235,53 @@ Info  2026-08-09T08:43:53.970840Z  Repairing stale view backing tables
 Info  2026-08-09T08:43:53.972374Z  Disconnecting all users
 ```
 
-The database may be left off — `:SpacetimeLogs` — in which case it is the one
-your project's `spacetime.json` names, or whatever else the connection resolved
-to; with neither, the command says so and does nothing.
-
-The level is highlighted per severity (`SpacetimeLogError`, `SpacetimeLogWarn`,
-`SpacetimeLogInfo` and so on), the timestamp is the same UTC rendering a
-`Timestamp` column gets, and the message is shown verbatim. A line the server
-sent that is not a log record is **skipped silently** — one malformed line never
+The level is highlighted per severity, the timestamp is the same UTC rendering
+a `Timestamp` column gets, and the message is shown verbatim. A line the server
+sent that is not a log record is skipped silently — one malformed line never
 costs you the rest of the log.
 
 Nothing here is cached: a log tail is stale the moment it lands, so every
 `:SpacetimeLogs` is a fresh request, and running it for a second database
 cancels the first.
 
-#### The level filter — `<` and `>`
-
-In the log window, `>` raises the minimum level shown by one step and `<` lowers
-it, through `Trace → Debug → Info → Warn → Error`. The badge always says where
-you are, and says how much is hidden when the filter is hiding anything:
+`>` raises the minimum level shown by one step and `<` lowers it, through
+`Trace → Debug → Info → Warn → Error`. Neither key sends a request — the filter
+is a display rule over the lines already in memory, so `<` brings back
+everything it was hiding — and both stop at the ends rather than wrapping.
+There is no `Panic` step: a panic outranks an error, so `Error` keeps it. The
+badge always says where you are, and how much is hidden when it is hiding
+anything:
 
 ```
 spacegym · 3 of 412 lines · asked for 200 · level ≥ Warn
 ```
 
-- **Neither key sends a request.** The filter is a display rule over the lines
-  already in memory, so the 5000 the view keeps are all still there: `<` brings
-  back everything it was hiding, and during a follow the stream is never
-  restarted or re-requested.
-- **Both keys stop at the ends rather than wrapping.** `>` on `Error` and `<` on
-  `Trace` do nothing, so leaning on `>` cannot tip over and bury the line you
-  were narrowing in on. There is no `Panic` step: a panic outranks an error, so
-  it is kept by `Error` anyway.
-- While following, lines arriving after you set the filter respect it too.
-- A level the server invented (`Verbose`, say) is shown under its own name and
-  ranked as `Info`, so it stays visible at the default.
-- The filter is per view: opening any other logs starts at `Trace` again.
+A level the server invented (`Verbose`, say) is shown under its own name and
+ranked as `Info`, so it stays visible at the default. The filter is per view:
+opening any other logs starts at `Trace` again.
 
-### `:SpacetimeLogs!` — follow
+**`:SpacetimeLogs!` follows.** The bang keeps the connection open and appends
+lines as the server produces them; the badge then ends `· following`, or
+`· stopped` once it has ended.
 
-The bang keeps the connection open and appends lines as the server produces
-them. The badge says which of the two you are looking at:
-
-```
-spacegym · 412 lines · asked for 200 · level ≥ Trace · following
-```
-
-- The buffer is written on a 100 ms clock rather than once per line, so a module
-  logging hundreds of lines a second costs ten repaints a second, not hundreds.
-- The view keeps the last **5000** entries; older ones drop off the top.
+- The buffer is written on a 100 ms clock rather than once per line, so a
+  module logging hundreds of lines a second costs ten repaints a second.
+- The view keeps the last **5000** entries; older ones drop off the top. The
+  cap is on what is *kept*, not on what is shown, so `<` still recovers
+  everything the filter was hiding.
 - The cursor is pulled down to each new last line **only if it was already on
   the last line**. Scroll up to read something and the incoming lines leave you
   alone; press `G` to start following the bottom again.
 
-`:SpacetimeLogsStop` ends the follow and leaves the buffer as it is — the badge
-then reads `· stopped`. The connection is also closed when the content buffer
-is wiped and when Neovim exits, so no `curl` is left running behind you.
-Opening any other logs — with or without a bang — stops the follow it replaces.
+`:SpacetimeLogsStop` ends the follow and leaves the buffer as it is. The
+connection is also closed when the content buffer is wiped and when Neovim
+exits, so no `curl` is left running behind you. Opening any other logs — with
+or without a bang — stops the follow it replaces.
 
 ### `:SpacetimeStatus`
 
-Prints the connection the plugin has resolved for the current buffer:
+Prints the connection the plugin has resolved for the current buffer, into
+`:messages` so it can be copied out:
 
 ```
 server:       maincloud (https://maincloud.spacetimedb.com:443)
@@ -333,9 +294,9 @@ project:      /path/to/repo/spacetime.json (database: spacegym)
 - `server` — the nickname you asked for (or the hostname, if you named one by
   hand) and the resolved base URL, whose scheme carries TLS and whose port is
   always explicit.
-- `identity` — your hex identity, derived from the token's `iss`/`sub` claims
-  or taken from the `identity` option. A derivation failure prints its reason
-  here instead of aborting the command.
+- `identity` — your hex identity, derived from the token's claims or taken from
+  the `identity` option. A derivation failure prints its reason here instead of
+  aborting the command.
 - `token` — always exactly `present` or `absent`. **The token is never
   printed**, not even a prefix of it; the command is meant to be safe to paste
   into a bug report.
@@ -345,8 +306,189 @@ project:      /path/to/repo/spacetime.json (database: spacegym)
   repository root and the database they name, or `none`.
 
 If the configuration cannot be resolved at all — an unknown server nickname,
-say — the error appears on the `server` line and the rest is still printed. A
-broken configuration is exactly what you would run this to diagnose.
+say — the error appears on the `server` line and the rest is still printed.
+
+## Keymaps
+
+Every mapping is buffer-local; the plugin sets nothing globally.
+
+### Sidebar
+
+In the `spacetime://sidebar` buffer (filetype `spacetimetree`):
+
+| Key           | Does                                              |
+| ------------- | ------------------------------------------------- |
+| `<CR>` or `o` | Expand or open the node under the cursor          |
+| `r`           | Refresh: drop the cache and fetch again           |
+| `q`           | Close the layout                                  |
+| `y`           | Yank the node's name                              |
+| `gi`          | Yank the database's identity                      |
+| `?`           | Print this key map                                |
+
+`y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
+system clipboard. `r` on a database node also drops that database's schema and
+rows, and clears a recorded pause, which is how you retry a paused database.
+
+### Rows
+
+In the content window *while it is showing a grid*:
+
+| Key  | Does                                                     |
+| ---- | -------------------------------------------------------- |
+| `s`  | Sort by the column under the cursor; again to reverse it  |
+| `]p` | Next page (100 rows, over the SQL `OFFSET`)               |
+| `[p` | Previous page; nothing on the first one                   |
+| `y`  | Yank the cell under the cursor, untruncated               |
+| `Y`  | Yank the whole row as JSON                                |
+| `K`  | Float the whole row, every column untruncated             |
+
+Yanks honour a register prefix (`"+y`) and your `clipboard` setting, exactly as
+any other yank would. In the `K` float, `q` or `<Esc>` closes it.
+
+### Logs
+
+In the content window *while it is showing logs*:
+
+| Key | Does                              |
+| --- | --------------------------------- |
+| `>` | Show only more severe log levels   |
+| `<` | Show less severe log levels too    |
+
+The content window is shared by the three views, so each set of keys is
+unbound when another view takes the buffer over. The schema view binds no keys
+of its own.
+
+## Configuration
+
+`setup()` takes an optional table. Every field is optional.
+
+```lua
+require("spacetime").setup({
+  log_level = vim.log.levels.INFO,
+  identity = nil,
+  side = "left",
+  width = 30,
+  log_lines = 200,
+})
+```
+
+- **`log_level`** — minimum severity for the plugin's own `vim.notify()`
+  messages. A `vim.log.levels` value; the default is `INFO`. Applied to the
+  logger at `setup()` time rather than stored.
+- **`identity`** — your hex identity, as a string. The escape hatch: it skips
+  the derivation from your token's claims entirely, so a bad derivation can
+  never fully block you. Normally you should not need it — the identity is
+  computed from the token — but `:SpacetimeStatus` will tell you when it cannot
+  be, and this is how you supply it by hand.
+- **`side`** — which side of the tabpage the sidebar opens on: `"left"` (the
+  default) or `"right"`. Anything else is rejected at `setup()` time.
+- **`width`** — how wide the sidebar is: a positive number of columns (`30` by
+  default), or a percentage of the screen as a string, e.g. `"20%"`. A
+  percentage is resolved against the terminal's current width each time the
+  layout is opened. The result is never narrower than 10 columns and always
+  leaves at least one column for the content window. The width is applied when
+  the sidebar is created, so one you have dragged wider survives a re-open.
+- **`log_lines`** — how much log backlog `:SpacetimeLogs` asks the server for
+  (`200` by default). Any whole number of lines, zero or more; a fraction, a
+  negative or a string is rejected at `setup()` time.
+
+`setup()` also accepts the connection fields `host`, `port`, `tls`, `server`,
+`database` and `token`. They sit at the top of the precedence chain below, and
+are the only way to pin a connection from your Neovim config rather than from
+the environment or a project file. They are stored as given and not
+validated at `setup()` time — a bad value surfaces when a connection is next
+resolved, on `:SpacetimeStatus` or in the sidebar.
+
+### Highlights
+
+Every group is defined as a `default` link, so a colourscheme that defines one
+itself wins, and you can re-link any of them without patching the plugin:
+
+`SpacetimeHeader`, `SpacetimeDatabase`, `SpacetimeTable`, `SpacetimeView`,
+`SpacetimeSystemTable`, `SpacetimeNull`, `SpacetimePrimaryKey`,
+`SpacetimeSpecial`, `SpacetimeTruncated`, `SpacetimeError`, `SpacetimePaused`,
+and one per log level: `SpacetimeLogPanic`, `SpacetimeLogError`,
+`SpacetimeLogWarn`, `SpacetimeLogInfo`, `SpacetimeLogDebug`,
+`SpacetimeLogTrace`.
+
+## How auth resolves
+
+Which server, which database and which token a buffer means is decided by four
+sources, consulted in one fixed order — highest first:
+
+```
+setup() opts  >  environment  >  spacetime.local.json  >  spacetime.json  >  cli.toml
+```
+
+The environment variables read are `SPACETIMEDB_HOST`, `SPACETIMEDB_PORT`,
+`SPACETIMEDB_SERVER`, `SPACETIMEDB_DATABASE` and `SPACETIMEDB_TOKEN`. There is
+no variable for TLS.
+
+**The address.** In order:
+
+1. An explicit `host` or `port` — from `setup()` or from `SPACETIMEDB_HOST` /
+   `SPACETIMEDB_PORT` — or `tls = true` from `setup()` wins outright and
+   suppresses `cli.toml` and the project files *entirely*, even when the values
+   happen to equal the defaults. Whatever of the three is missing defaults to
+   `localhost`, port `3000` and no TLS.
+2. Otherwise a **nickname** (`setup({ server = … })`, `SPACETIMEDB_SERVER`, or
+   the project file's `server`) is looked up in `cli.toml`'s
+   `[[server_configs]]` blocks. A nickname that is not there is a hard error —
+   the message lists the nicknames that are — whatever supplied it. Silently
+   connecting somewhere else would be worse.
+3. Otherwise `cli.toml`'s `default_server`, or the conventional `local` when
+   that key is absent. A `default_server` naming a block that does not exist is
+   *not* an error; it falls through.
+4. Otherwise `localhost:3000` without TLS.
+
+A server's port comes from its protocol — 443 for `https`, 80 for `http` — not
+from 3000. 3000 is the local-server default, and it only applies when you named
+a host by hand.
+
+**The token** is `setup({ token = … })`, else `SPACETIMEDB_TOKEN`, else
+`cli.toml`'s `spacetimedb_token`. That last one is what `spacetime login`
+writes, and is the normal case. The token is sent to `curl` on stdin rather
+than in its argv, so it is not visible in `ps`, and the plugin's own log output
+redacts it.
+
+**The identity** — needed to list your databases at all — is taken from
+`setup({ identity = … })` if you set it, and otherwise derived from the token:
+its legacy `hex_identity` claim when it has one, else BLAKE3 over the `iss` and
+`sub` claims. This is why every identity you see starts `c200`.
+
+### Project files select the database
+
+A repository usually knows which database it means. Starting from the current
+buffer's directory (or the working directory, for an unnamed buffer), the
+plugin walks up to the nearest directory containing `.jj` **or** `.git` and
+reads two files there:
+
+```
+spacetime.json          committed; the project's defaults
+spacetime.local.json    usually .gitignore'd; overlaid on top, key by key
+```
+
+Only `server` and `database` are read from them — `module-path`, `generate` and
+`dev` belong to the CLI's build flow and are ignored. `server` is a `cli.toml`
+nickname, so it resolves *through* the chain above rather than around it. A
+missing, unreadable or malformed project file contributes nothing and is never
+an error.
+
+```json
+{
+  "server": "maincloud",
+  "database": "spacegym"
+}
+```
+
+With that in your repo, `:Spacetime` opens on `maincloud` with `spacegym`
+already expanded, `:SpacetimeRows member` needs no database prefix, and
+`:SpacetimeLogs` with no argument tails `spacegym`.
+
+The connection is resolved from **the buffer you ran the command in**, before
+the layout displaces it — which is what makes "run `:Spacetime` in a module
+repo and land on its database" work. `:SpacetimeStatus` reports the resolution
+for the current buffer, project files and all.
 
 ## Development
 
@@ -361,13 +503,13 @@ That provides `neovim`, `lua-language-server`, `luacheck`, `stylua`, `curl` and
 the `spacetime` CLI.
 
 ```bash
-make                                  # typecheck + test (the default target)
-make test                             # tests only
+make                                      # typecheck + test (the default target)
+make test                                 # tests only
 make test_file FILE=tests/test_main.lua   # one test file
-make typecheck                        # luacheck + lua-language-server
-make format                           # stylua
-make check-format                     # stylua --check (what CI runs)
-make helptags                         # regenerate doc/tags after editing doc/
+make typecheck                            # luacheck + lua-language-server
+make format                               # stylua
+make check-format                         # stylua --check (what CI runs)
+make helptags                             # regenerate doc/tags after editing doc/
 ```
 
 Tests use [mini.test](https://github.com/echasnovski/mini.test); `make` clones
