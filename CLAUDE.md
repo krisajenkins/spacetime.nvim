@@ -7,7 +7,7 @@ code in this repository.
 
 spacetime.nvim is a SpacetimeDB browser inside Neovim: `:Spacetime` opens a
 sidebar of the databases your identity owns beside a content window that browses
-rows as a sortable, pageable grid, describes schemas and reducers, and tails
+rows as a sortable, pageable grid, describes schemas, lists reducers, and tails
 logs.
 
 **It talks to SpacetimeDB's HTTP API directly, over `curl`.** The `spacetime`
@@ -85,6 +85,7 @@ lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
   identity.lua                 account identity derived from the token's OIDC claims
   json.lua                     big-integer-preserving JSON decode
   logs.lua                     one NDJSON log line -> one entry; level ordering
+  reducers.lua                 a module's reducers, normalised for display
   schema.lua                   schema v10 and v9 normalised into one model
   sort.lua                     display order over the rows, without refetching
   sql.lua                      the SQL response envelope and the SELECT builder
@@ -95,8 +96,10 @@ lua/spacetime/ui/              buffers, windows, keymaps
   highlights.lua               default highlight groups (all `default` links)
   keys.lua                     buffer-local keymaps, and the unbinding
   logs.lua                     the log view, static and followed
+  reducers.lua                 the reducers view
   rows.lua                     the row grid view
   schema.lua                   the schema detail view
+  sections.lua                 title/badge/sections sink for the two detail views
   sidebar.lua                  the sidebar controller: model, fetch, paint, keys
   tree.lua                     the sidebar tree rendered as data
 plugin/spacetime.lua           load-time wiring: highlight groups and commands

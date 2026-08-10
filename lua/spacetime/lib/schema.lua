@@ -295,6 +295,23 @@ function M.is_callable(reducer)
 	return reducer.visibility ~= "Private"
 end
 
+---Both spellings of a name: `name (canonical)`, or just `name` where they agree.
+---
+---The module was written as `ledgerEntry` and SQL knows it as `ledger_entry`;
+---the same goes for `onConnect` / `on_connect`. Every view that names a table, a
+---view or a reducer shows both, because the endpoints accept either — so the
+---rule lives here rather than being spelt out once per renderer.
+---@param name any Display name; anything but a string reads as empty.
+---@param canonical any SQL name; ignored when it is absent or equal to `name`.
+---@return string
+function M.display_name(name, canonical)
+	local display = type(name) == "string" and name or ""
+	if type(canonical) == "string" and canonical ~= "" and canonical ~= display then
+		return display .. " (" .. canonical .. ")"
+	end
+	return display
+end
+
 ---Find a table by either spelling of its name.
 ---
 ---The SQL layer accepts both `ledgerEntry` and `ledger_entry`, and so does

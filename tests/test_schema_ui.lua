@@ -9,8 +9,11 @@
 --
 -- That pairing is the point of the file. `schema_v10.json` and `schema_v9.json`
 -- are the same live module in both wire shapes, so the same assertions can be
--- run twice: v10 carries `visibility` and v9 carries none, and the second run is
--- what proves an older server's reducers are not all labelled `Private`.
+-- run twice, and the v9 run is what proves the fallback path is really taken.
+--
+-- The reducers are NOT here: they belong to the database rather than to any one
+-- table and have a view of their own (tests/test_reducers_ui.lua). What this file
+-- asserts about them is that this view no longer mentions them at all.
 local child, new_set = require("tests.helpers.child")()
 local expect = MiniTest.expect
 local read = require("tests.helpers.fixtures").read
@@ -116,7 +119,7 @@ end
 
 ---The lines of one section: everything between its heading and the blank line
 ---that starts the next one.
----@param heading string e.g. `"Columns"`, `"Reducers"` (which carries the database).
+---@param heading string e.g. `"Columns"`, `"Indexes"`.
 ---@return string[]
 local function section(heading)
 	local out, inside = {}, false
@@ -235,42 +238,35 @@ T["indexes and constraints render with the columns they are over"] = function()
 end
 
 --------------------------------------------------------------------------------
--- Reducers
+-- No reducers
 --------------------------------------------------------------------------------
 
-T["the reducers carry the visibility v10 sent, and their signatures"] = function()
+-- Issue #38: the reducers are the *database's*, not the table's, so describing a
+-- table must not list them. |:SpacetimeReducers| is where they live now, and
+-- tests/test_reducers_ui.lua is where they are asserted.
+T["the reducers are not in the schema view at all"] = function()
 	serve_schema(read("schema_v10.json"))
 
 	child.lua([[ vim.cmd('SpacetimeSchema spacegym.ledgerEntry') ]])
 
-	local reducers = section("Reducers")
-	expect.equality(#reducers, 19)
+	-- No heading, and none of the signature or visibility text that would come
+	-- with one — `book` and `onConnect` are reducers of this very module.
+	expect.equality(section("Reducers"), {})
+	for _, needle in ipairs({ "Reducers", "ClientCallable", "book(", "onConnect", "on_connect" }) do
+		expect.equality({ needle, line_with(content_lines(), needle) }, { needle, nil })
+	end
 
-	-- The parameter list is typed through `lib/value.label`, and the return types
-	-- are the `ok`/`err` pair only v10 carries.
-	expect.equality(line_with(reducers, "book("), "  ClientCallable  book(instanceId: U64) -> ok {} / err String")
-
-	-- 5 of the module's 19 reducers are Private, and the lifecycle ones are among
-	-- them — shown with both spellings, greyed out rather than hidden.
-	local private = vim.tbl_filter(function(line)
-		return line:find("Private", 1, true) ~= nil
-	end, reducers)
-	expect.equality(#private, 5)
-	expect.equality(line_with(reducers, "onConnect"):match("^%s+(%a+)%s+(.*)$"), "Private")
-	expect.equality(line_with(reducers, "onConnect"):find("onConnect (on_connect)()", 1, true) ~= nil, true)
-
-	local greyed = vim.tbl_filter(function(mark)
+	-- The last section is Constraints, so nothing was appended below it.
+	local lines = content_lines()
+	expect.equality(lines[#lines - 1], "Constraints")
+	-- And nothing is greyed out: the `Private` marker was the only user of that
+	-- highlight in this view.
+	expect.equality(#vim.tbl_filter(function(mark)
 		return mark[3] == "SpacetimeNull"
-	end, content_marks())
-	-- Two marks each — the marker and the signature — for the five Private ones.
-	expect.equality(#greyed, 10)
+	end, content_marks()), 0)
 end
 
--- The issue's "done when", and the reason `visibility` is nilable at all: v9
--- carries no such field, so every reducer's visibility is unknown. Unknown means
--- callable, and a marker that said `Private` on an older server would be
--- actively misleading about what the module offers.
-T["the same module on a v9 server marks no reducer Private"] = function()
+T["a v9 schema describes its table and no reducers either"] = function()
 	serve_v9(read("schema_v9.json"))
 
 	child.lua([[ vim.cmd('SpacetimeSchema spacegym.ledger_entry') ]])
@@ -282,19 +278,8 @@ T["the same module on a v9 server marks no reducer Private"] = function()
 	-- v10 was asked for first and rejected, so this really is the fallback path.
 	expect.equality(schema_requests(), 2)
 
-	local reducers = section("Reducers")
-	expect.equality(#reducers, 19)
-	for _, line in ipairs(reducers) do
-		expect.equality(line:find("Private", 1, true), nil)
-		expect.equality(line:find("ClientCallable", 1, true), nil)
-	end
-
-	-- The reducer v10 calls Private is listed, with no marker and no invented
-	-- return types: the access column does not exist at all on a v9 schema.
-	expect.equality(line_with(reducers, "on_connect"), "  on_connect()")
-	expect.equality(#vim.tbl_filter(function(mark)
-		return mark[3] == "SpacetimeNull"
-	end, content_marks()), 0)
+	expect.equality(section("Reducers"), {})
+	expect.equality(line_with(lines, "on_connect"), nil)
 end
 
 --------------------------------------------------------------------------------

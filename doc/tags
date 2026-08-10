@@ -3,6 +3,7 @@
 :SpacetimeDatabases	spacetime.txt	/*:SpacetimeDatabases*
 :SpacetimeLogs	spacetime.txt	/*:SpacetimeLogs*
 :SpacetimeLogsStop	spacetime.txt	/*:SpacetimeLogsStop*
+:SpacetimeReducers	spacetime.txt	/*:SpacetimeReducers*
 :SpacetimeRows	spacetime.txt	/*:SpacetimeRows*
 :SpacetimeSchema	spacetime.txt	/*:SpacetimeSchema*
 :SpacetimeStatus	spacetime.txt	/*:SpacetimeStatus*
@@ -36,7 +37,9 @@ spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*
 spacetime-keymaps	spacetime.txt	/*spacetime-keymaps*
 spacetime-keys-logs	spacetime.txt	/*spacetime-keys-logs*
+spacetime-keys-reducers	spacetime.txt	/*spacetime-keys-reducers*
 spacetime-keys-rows	spacetime.txt	/*spacetime-keys-rows*
+spacetime-keys-schema	spacetime.txt	/*spacetime-keys-schema*
 spacetime-keys-shared	spacetime.txt	/*spacetime-keys-shared*
 spacetime-keys-sidebar	spacetime.txt	/*spacetime-keys-sidebar*
 spacetime-logs-follow	spacetime.txt	/*spacetime-logs-follow*
@@ -50,10 +53,11 @@ spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-placeholder-cmds	spacetime.txt	/*spacetime-placeholder-cmds*
 spacetime-project-files	spacetime.txt	/*spacetime-project-files*
 spacetime-quickstart	spacetime.txt	/*spacetime-quickstart*
+spacetime-reducers-private	spacetime.txt	/*spacetime-reducers-private*
+spacetime-reducers-view	spacetime.txt	/*spacetime-reducers-view*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*
 spacetime-requires-cli	spacetime.txt	/*spacetime-requires-cli*
 spacetime-schema-names	spacetime.txt	/*spacetime-schema-names*
-spacetime-schema-private	spacetime.txt	/*spacetime-schema-private*
 spacetime-schema-view	spacetime.txt	/*spacetime-schema-view*
 spacetime-sidebar-glyphs	spacetime.txt	/*spacetime-sidebar-glyphs*
 spacetime-sidebar-paused	spacetime.txt	/*spacetime-sidebar-paused*

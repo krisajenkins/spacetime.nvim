@@ -23,8 +23,8 @@ spacetime.nvim is a SpacetimeDB browser inside Neovim.
 |:Spacetime| opens a two-window layout: a sidebar listing the databases your
 identity owns, and a content window beside it. Expand a database to see its
 tables, its views and SpacetimeDB's own system tables; press <CR> on one to
-browse its rows as an aligned, sortable, pageable grid; describe its schema
-alongside the module's reducers; or tail a database's logs, either as a static
+browse its rows as an aligned, sortable, pageable grid; describe its schema;
+list the module's reducers; or tail a database's logs, either as a static
 backlog or followed live.
 
 The plugin talks to SpacetimeDB's HTTP API directly, over `curl`. It never
@@ -177,7 +177,7 @@ buffer.
 ==============================================================================
 5. COMMANDS                                               *spacetime-commands*
 
-The plugin defines ten commands: >
+The plugin defines eleven commands: >
 
     :Spacetime                  open the browser: layout plus database list
     :SpacetimeToggle            open the browser, or close it if it is open
@@ -185,7 +185,8 @@ The plugin defines ten commands: >
     :SpacetimeDatabases         open the browser, refetch the database list
     :SpacetimeTables [db]       list a database's tables    (placeholder)
     :SpacetimeRows {tbl}        browse the rows of [db.]tbl
-    :SpacetimeSchema {tbl}      schema of [db.]tbl, and the reducers
+    :SpacetimeSchema {tbl}      schema of [db.]tbl
+    :SpacetimeReducers [db]     list a database's reducers
     :SpacetimeLogs[!] [db]      show a database's logs; ! follows them live
     :SpacetimeLogsStop          stop following logs
     :SpacetimeStatus            print the resolved connection
@@ -216,6 +217,7 @@ FROM WHAT THE PLUGIN HAS ALREADY FETCHED THIS SESSION. >
 
     :SpacetimeConnect           nicknames from your cli.toml
     :SpacetimeTables            cached database names
+    :SpacetimeReducers          cached database names
     :SpacetimeLogs              cached database names
     :SpacetimeRows              cached db.table
     :SpacetimeSchema            cached db.table
@@ -309,15 +311,38 @@ tokens in that file are never touched by completion.
 :SpacetimeSchema {[database.]table}
 
     Open the browser and describe that table in the content window: its
-    columns with their resolved types, then its indexes, its constraints, and
-    the whole module's reducers. See |spacetime-schema-view|.
+    columns with their resolved types, then its indexes and its constraints.
+    See |spacetime-schema-view|.
 
     The database may be left off and either spelling of the table is accepted,
     exactly as for |:SpacetimeRows|. A view is described too.
 
+    The reducers are NOT here — they belong to the database rather than to any
+    one of its tables, and have a view of their own: |:SpacetimeReducers|.
+
     The schema is the one the sidebar caches, so describing a table in a
     database you have already expanded costs no request, and expanding that
     database afterwards costs none either. `r` in the sidebar drops it.
+
+                                                          *:SpacetimeReducers*
+:SpacetimeReducers [{database}]
+
+    Open the browser and list that database's reducers in the content window,
+    each with its parameter signature and its visibility. See
+    |spacetime-reducers-view|.
+
+    The database may be left off, in which case it is the one the connection
+    resolved for the current buffer carries — your project's `spacetime.json`,
+    the environment, or |spacetime.setup()|. With a database in neither place,
+    the command says so and does nothing.
+
+    Reducers belong to the module, not to any one table, which is why this
+    is a view of its own rather than a section under |:SpacetimeSchema|. `R`
+    in the sidebar is the keystroke form; see |spacetime-keys-sidebar|.
+
+    The schema it reads is the one the sidebar and the schema view share, so
+    listing the reducers of a database you have already expanded costs no
+    request. `r` in the sidebar drops it.
 
                                                               *:SpacetimeLogs*
 :SpacetimeLogs[!] [{database}]
@@ -540,10 +565,6 @@ THE SCHEMA VIEW                                        *spacetime-schema-view*
 
     Constraints
       ledger_entry_entry_id_key  Unique(entry_id)
-
-    Reducers (spacegym)
-      ClientCallable  book(instanceId: U64) -> ok {} / err String
-      Private         onConnect (on_connect)() -> ok {} / err String
 <
 The title is the table; the line under it says what kind of thing it is,
 whether it is public, how many columns it has and which schema version the
@@ -555,11 +576,42 @@ at. `PK` marks the primary key and `autoinc` a sequence-backed column.
 A view has neither indexes nor constraints, and the headings say "(none)"
 rather than disappearing.
 
-The reducers are the whole database's, whichever table is on screen. Each is
-listed with its parameter names and types and, where the server sends them,
-the `ok` and `err` types it returns.
+The reducers are not here: they belong to the database rather than to any one
+of its tables, so they have a view of their own — |spacetime-reducers-view|.
 
-                                                    *spacetime-schema-private*
+                                                      *spacetime-schema-names*
+Where a name was written one way in the module and is spelled another way in
+SQL, both are shown: `ledgerEntry (ledger_entry)`, `onConnect (on_connect)`.
+The SQL endpoint accepts either spelling, so showing the one you wrote is a
+convenience rather than a trap. Where the two agree, only one name is printed.
+The rule is one function, shared by this view and the reducers view, so the
+two cannot disagree about what a dual name looks like.
+
+Nothing in this view is truncated, and the only key it binds is the shared `q`
+(|spacetime-keys-shared|).
+
+THE REDUCERS VIEW                                    *spacetime-reducers-view*
+
+|:SpacetimeReducers| lists a database's reducers in the content window: >
+
+    spacegym
+    19 reducers · schema v10
+
+    Reducers
+      ClientCallable  book(instanceId: U64) -> ok {} / err String
+      Private         onConnect (on_connect)() -> ok {} / err String
+<
+The title is the database, because that is what a reducer belongs to; the line
+under it says how many there are and which schema version the server answered
+with. Each reducer is listed with its parameter names and types and, where the
+server sends them, the `ok` and `err` types it returns — a return clause is
+omitted entirely rather than invented when the schema carried neither type.
+Both spellings of a name are shown where they differ, exactly as in the schema
+view (|spacetime-schema-names|).
+
+A module with no reducers says "(none)" rather than rendering an empty buffer.
+
+                                                  *spacetime-reducers-private*
 A reducer is marked `ClientCallable` or `Private` as the server reports it,
 and a `Private` one is greyed out rather than hidden: it is part of the
 module, it is simply not yours to call.
@@ -569,14 +621,8 @@ the marker is OMITTED ENTIRELY rather than guessed at — an unknown visibility
 means "assume callable", because labelling every reducer `Private` would be a
 claim about your module rather than a report of what the server said.
 
-                                                      *spacetime-schema-names*
-Where a name was written one way in the module and is spelled another way in
-SQL, both are shown: `ledgerEntry (ledger_entry)`, `onConnect (on_connect)`.
-The SQL endpoint accepts either spelling, so showing the one you wrote is a
-convenience rather than a trap. Where the two agree, only one name is printed.
-
-Nothing in this view is truncated, and the only key it binds is the shared `q`
-(|spacetime-keys-shared|).
+Nothing in this view is truncated either, and the only key it binds is the
+shared `q` (|spacetime-keys-shared|).
 
 ==============================================================================
 6. KEYMAPS                                                 *spacetime-keymaps*
@@ -590,6 +636,7 @@ you can hang your own autocommands or mappings off it: >
 
     <CR> / o    expand or open the node under the cursor
     s           show the schema of the table under the cursor
+    R           show the reducers of the database the cursor is in
     gl          show the logs of the database the cursor is in
     gL          follow those logs live
     r           refresh: drop the cache and fetch again
@@ -601,20 +648,23 @@ you can hang your own autocommands or mappings off it: >
 Press `?` in the sidebar to print the same list; it comes from the same table
 the mappings are built from, so the two cannot disagree.
 
-`s`, `gl` and `gL` are the keystroke forms of |:SpacetimeSchema| and
-|:SpacetimeLogs|, answered by the node under the cursor rather than by an
-argument. `s` paints the schema of the table or view under the cursor into the
-content window, from the schema the tree already cached when the database was
-expanded, so it usually costs no request. `gl` and `gL` show the logs of the
-database the cursor is inside — from one of its tables just as well as from
-the database line — and `gL` streams until |:SpacetimeLogsStop| exactly as the
-bang does. Where a key does not apply to the node under the cursor it says so
-and does nothing: `s` on a database, or any of them on a message line.
+`s`, `R`, `gl` and `gL` are the keystroke forms of |:SpacetimeSchema|,
+|:SpacetimeReducers| and |:SpacetimeLogs|, answered by the node under the
+cursor rather than by an argument. `s` paints the schema of the table or view
+under the cursor into the content window, from the schema the tree already
+cached when the database was expanded, so it usually costs no request. `R`,
+`gl` and `gL` answer with the database the cursor is INSIDE — from one of its
+tables just as well as from the database line — because a module's reducers
+and its logs are the database's rather than any one table's; `gL` streams
+until |:SpacetimeLogsStop| exactly as the bang does. Where a key does not
+apply to the node under the cursor it says so and does nothing: `s` on a
+database, or any of them on a message line.
 
 `s` in the sidebar and `s` in the grid (|spacetime-keys-rows|, where it sorts)
-are mappings in two different buffers, so they never both apply. `gl` and `gL`
-are `g`-prefixed for the same reason `gi` already was: `l` and `L` keep their
-usual meanings in the tree.
+are mappings in two different buffers, so they never both apply. `R` is the
+capital deliberately: the lower-case `r` refreshes, and keeps doing exactly
+that. `gl` and `gL` are `g`-prefixed for the same reason `gi` already was: `l`
+and `L` keep their usual meanings in the tree.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
 system clipboard.
@@ -680,15 +730,27 @@ invented is shown under its own name and ranked as `Info`, so it stays visible
 at the default. The filter is per view: opening any other logs starts at
 `Trace` again.
 
+SCHEMA AND REDUCERS      *spacetime-keys-schema* *spacetime-keys-reducers*
+
+In the content window while it is showing a schema or a reducer list: >
+
+    q           close the layout
+<
+`q` is the shared key — see |spacetime-keys-shared| — and it is the only key
+either view binds: both are text, with nothing to page, sort or filter. The
+sidebar's `s` and `R` are what open them, and those are mappings in the
+sidebar buffer rather than in this one.
+
                                                        *spacetime-keys-shared*
-The content window is shared by the three views, so each set of keys is
+The content window is shared by the four views, so each set of keys is
 unbound when another view takes the buffer over, and put back with the next
 one you open. A `]p` left behind could otherwise page a grid that is no longer
 on screen.
 
-`q` is the one key all three bind, and the sidebar binds it too: the sidebar
+`q` is the one key all four bind, and the sidebar binds it too: the sidebar
 and the content window are one thing, so closing either closes both, whichever
-window you press it in. The schema view binds nothing else.
+window you press it in. The schema and reducers views bind nothing else: both
+are text, with nothing to page, sort or filter.
 
 ==============================================================================
 7. CONFIGURATION                                            *spacetime-config*

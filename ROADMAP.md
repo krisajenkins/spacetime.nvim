@@ -574,6 +574,11 @@ be one commit.
     `ok`/`err` return types, and a `ClientCallable`/`Private` marker. Show both the source
     name and the canonical name where they differ (`ledgerEntry` → `ledger_entry`).
 
+    Superseded in part by issue #38: the reducers are the *database's*, not the table's,
+    so they moved out of this view into `ui/reducers.lua` (`:SpacetimeReducers [db]`, and
+    `R` in the sidebar). Everything above about how a reducer is rendered — the
+    signature, the return clause, the `Private` marker — holds there instead.
+
 ### Phase 8 — Logs
 
 31. **Static log view** — `:SpacetimeLogs [db]` → `logs?num_lines=N&follow=false`.
@@ -597,7 +602,7 @@ be one commit.
   `tests/CLAUDE.md` gotchas already anticipate this.
 - `:SpacetimeCall` — reducer invocation with a form driven by the parameter signature.
   Offer only `visibility == ClientCallable` reducers (on the real module that is 14 of 19);
-  show `Private` ones greyed out in the schema view rather than hiding them.
+  show `Private` ones greyed out in the reducers view rather than hiding them.
 - WebSocket live subscriptions, using the `v1.json.spacetimedb` subprotocol so no BSATN
   decoder is ever needed.
 - Metrics tab (`GET /metrics`, Prometheus text).

@@ -712,6 +712,28 @@ function M.describe()
 	})
 end
 
+---Show the reducers of the database the cursor is inside. What `R` does.
+---
+---The keystroke form of |:SpacetimeReducers|. Reducers belong to the module
+---rather than to any one of its tables, so — exactly like `gl` — this answers
+---with the database the cursor is *inside*: pressed on a table or a view it shows
+---that node's database's reducers. A top-level message line belongs to no
+---database and says so.
+---
+---No layout call: the cursor is in the sidebar, so the content window is already
+---there. The schema itself is the one the tree cached when the database was
+---expanded, so this normally costs no request at all.
+function M.reducers()
+	local node = M.node_under_cursor()
+	local database = node and node.database
+	if not connection or type(database) ~= "string" or database == "" then
+		require("spacetime.logger").warn("there are no reducers to show here")
+		return
+	end
+
+	require("spacetime.ui.reducers").open({ connection = connection, database = database })
+end
+
 ---Show the logs of the database the cursor is inside. What `gl` and `gL` do.
 ---
 ---The keystroke form of |:SpacetimeLogs| and |:SpacetimeLogs!|. Every node
@@ -765,14 +787,16 @@ end
 ---Every key the sidebar binds, and the help text `?` prints. One table, so the
 ---mappings and the help cannot drift apart.
 ---
----The three view keys — `s`, `gl`, `gL` — are the keystroke forms of the
+---The four view keys — `s`, `R`, `gl`, `gL` — are the keystroke forms of the
 ---commands that would otherwise be the only way in, and each is answered by the
 ---node under the cursor rather than by an argument. Two rules hold them
 ---together: a key that does not apply to the node under the cursor says so and
 ---does nothing, and no key here shadows a motion. `s` is free because the
 ---sidebar has no `s` of its own to lose (the grid's `s` sorts, but that is a
----mapping in the *content* buffer, and the two never both apply); `gl` and `gL`
----are `g`-prefixed, as `gi` already is, so `l` and `L` still move the cursor.
+---mapping in the *content* buffer, and the two never both apply); `R` is
+---deliberately the capital, because the lower-case `r` refreshes and must keep
+---doing exactly that; `gl` and `gL` are `g`-prefixed, as `gi` already is, so `l`
+---and `L` still move the cursor.
 ---@type SpacetimeKeymap[]
 M.KEYMAPS = {
 	{
@@ -787,6 +811,13 @@ M.KEYMAPS = {
 		desc = "show the schema of the table under the cursor",
 		action = function()
 			M.describe()
+		end,
+	},
+	{
+		keys = { "R" },
+		desc = "show the reducers of the database the cursor is in",
+		action = function()
+			M.reducers()
 		end,
 	},
 	{

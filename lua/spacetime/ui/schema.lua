@@ -1,37 +1,33 @@
 -- The schema detail view: what `:SpacetimeSchema [db.]tbl` paints into the
 -- content window.
 --
--- One table's shape — its columns with their resolved types, its indexes and its
--- constraints — followed by the whole database's reducers. It lives under `ui/`
--- and may therefore touch `vim.api`; everything it reads under `lib/` may not.
--- `lib/schema.lua` has already normalised both wire versions into one model and
--- `lib/value.label` already turns an `AlgebraicType` into a name, so this file
--- is layout and nothing else.
+-- One table's shape, and only that: its columns with their resolved types, its
+-- indexes and its constraints. The module's reducers belong to the database
+-- rather than to any one table, and have a view of their own — see
+-- `ui/reducers.lua`. This file lives under `ui/` and may therefore touch
+-- `vim.api`; everything it reads under `lib/` may not. `lib/schema.lua` has
+-- already normalised both wire versions into one model and `lib/value.label`
+-- already turns an `AlgebraicType` into a name, so this file is layout and
+-- nothing else.
 --
--- Five things this file exists to get right:
+-- Four things this file exists to get right:
 --
 -- 1. **Both spellings, wherever they differ.** The module was written as
---    `ledgerEntry` and SQL knows it as `ledger_entry`; the same goes for
---    `onConnect` / `on_connect`. Both are shown — `ledgerEntry (ledger_entry)` —
---    because the SQL endpoint accepts either, so the source spelling is a
---    readability win rather than a trap. Where the two coincide (every v9
---    schema, and most v10 names) only the one name is printed.
--- 2. **Unknown visibility means callable, and renders no marker.** `visibility`
---    is a v10 field; on a v9 fallback it is `nil` for every reducer. Marking
---    those `Private` would tell the user their reducers cannot be called when
---    all we actually know is that the server is too old to say. So the access
---    column only exists when at least one reducer carries a visibility, and a v9
---    schema lists its reducers with no marker at all (`lib/schema.is_callable`
---    reads the same field the same way).
--- 3. **Nothing is truncated.** `ui/grid.lua` cuts a cell to 40 columns because
+--    `ledgerEntry` and SQL knows it as `ledger_entry`. Both are shown —
+--    `ledgerEntry (ledger_entry)` — because the SQL endpoint accepts either, so
+--    the source spelling is a readability win rather than a trap. Where the two
+--    coincide (every v9 schema, and most v10 names) only the one name is
+--    printed. `lib/schema.display_name` owns that rule, shared with the reducers
+--    view.
+-- 2. **Nothing is truncated.** `ui/grid.lua` cuts a cell to 40 columns because
 --    the row grid has `y` and `K` to recover the rest with; this view has
 --    neither, and a type signature cut mid-generic is worse than a long line.
---    The grid is used for its alignment and its byte offsets only, with the
---    width budget effectively lifted.
--- 4. **Errors are buffer text.** A failed schema request, a table the module
+--    `ui/sections.lua` uses the grid for its alignment and its byte offsets only,
+--    with the width budget effectively lifted.
+-- 3. **Errors are buffer text.** A failed schema request, a table the module
 --    does not have, a raise from the layout itself: all three are rendered as
 --    lines, never as a stack trace under the cursor.
--- 5. **The content buffer is shared with the row grid.** `open` claims it
+-- 4. **The content buffer is shared with the row grid.** `open` claims it
 --    through `ui/buffer.claim_content`, so a rows response still on the wire
 --    does not paint over the schema when it lands, and the render applies this
 --    view's key map — the shared `q` and nothing else — through `ui/keys`, which
@@ -39,6 +35,11 @@
 --    `]p` must not page a grid that is no longer displayed.
 
 local M = {}
+
+-- The title/badge/sections sink, shared with `ui/reducers.lua`. Required at load
+-- time like `ui/keys` below, and safe for the same reason: `ui/sections.lua`
+-- requires nothing at load time, so it cannot cycle back here.
+local sections = require("spacetime.ui.sections")
 
 ---The name this view claims the content buffer under.
 M.OWNER = "schema"
@@ -49,19 +50,11 @@ M.OWNER = "schema"
 ---filter, and the one key it has is the one every buffer in the layout has. (The
 ---sidebar's `s` is what opens it; that is a mapping in the sidebar buffer, not in
 ---this one.) Applying it on every render is also what *unbinds* the row grid's
----keys — see point 5 of the module header.
+---keys — see point 4 of the module header.
 ---@type SpacetimeKeymap[]
 M.KEYMAPS = { require("spacetime.ui.keys").CLOSE }
 
 local LOADING = "loading…"
-local UNKNOWN_ERROR = "unknown error"
-local NONE = "(none)"
-local INDENT = "  "
-
--- Wide enough that nothing real is ever cut, and a backstop against a
--- pathological generated type name rather than a layout decision. See point 3 of
--- the module header.
-local MAX_WIDTH = 400
 
 ---What |spacetime.ui.schema.open()| needs.
 ---
@@ -87,82 +80,6 @@ local view = nil
 --------------------------------------------------------------------------------
 -- Building the lines
 --------------------------------------------------------------------------------
-
----The lines of the view, and the spans to mark on them, as they are assembled.
----@class SpacetimeSchemaSink
----@field lines string[]
----@field spans SpacetimeGridSpan[]
-
----@return SpacetimeSchemaSink
-local function new_sink()
-	return { lines = {}, spans = {} }
-end
-
----Append one line, optionally marked in full.
----@param sink SpacetimeSchemaSink
----@param text string
----@param hl? string
-local function push(sink, text, hl)
-	local line = require("spacetime.ui.grid").sanitise(text)
-	sink.lines[#sink.lines + 1] = line
-	if hl ~= nil and #line > 0 then
-		sink.spans[#sink.spans + 1] = {
-			line = #sink.lines - 1,
-			start_col = 0,
-			end_col = #line,
-			hl_group = hl,
-		}
-	end
-end
-
----Append a section: a blank line, a heading, then a grid of rows indented under
----it — or `(none)` when the section is empty.
----
----The grid's spans are byte offsets into its own lines, so they are moved onto
----the sink's line numbers and along by the indent, which is plain ASCII.
----@param sink SpacetimeSchemaSink
----@param heading string
----@param columns SpacetimeGridColumn[]
----@param cells SpacetimeGridCell[][]
-local function section(sink, heading, columns, cells)
-	push(sink, "")
-	push(sink, heading, "SpacetimeHeader")
-
-	if #cells == 0 then
-		push(sink, INDENT .. NONE, "SpacetimeNull")
-		return
-	end
-
-	local layout = require("spacetime.ui.grid").layout(columns, cells, { header = false, max_width = MAX_WIDTH })
-	local offset = #sink.lines
-	for _, line in ipairs(layout.lines) do
-		sink.lines[#sink.lines + 1] = INDENT .. line
-	end
-	for _, span in ipairs(layout.spans) do
-		sink.spans[#sink.spans + 1] = {
-			line = span.line + offset,
-			start_col = span.start_col + #INDENT,
-			end_col = span.end_col + #INDENT,
-			hl_group = span.hl_group,
-		}
-	end
-end
-
----`name (canonical)`, or just `name` where the two agree.
----
----Point 1 of the module header. Written once and used for the title and for
----every reducer, so the two can never disagree about what a dual name looks
----like.
----@param name any
----@param canonical any
----@return string
-local function both_names(name, canonical)
-	local display = type(name) == "string" and name or ""
-	if type(canonical) == "string" and canonical ~= "" and canonical ~= display then
-		return display .. " (" .. canonical .. ")"
-	end
-	return display
-end
 
 ---The name of a 0-based column id, for an index or a constraint that names one.
 ---@param entry table
@@ -216,44 +133,12 @@ local function tagged_columns(raw, entry)
 	return tag .. "(" .. table.concat(names, ", ") .. ")"
 end
 
----One reducer's signature: `book (book)(instanceId: U64) -> ok {} / err String`.
----
----The return clause is omitted entirely when the schema carried neither type,
----which is every v9 reducer — an invented `-> ok ?` would be a claim about the
----module rather than a report of what the server said.
----@param reducer SpacetimeSchemaReducer
----@param schema SpacetimeSchema
----@return string
-local function signature(reducer, schema)
-	local value = require("spacetime.lib.value")
-
-	local params = {}
-	for i, param in ipairs(reducer.params or {}) do
-		local label = value.label(param.type, schema)
-		params[i] = param.name and (param.name .. ": " .. label) or label
-	end
-
-	local out = both_names(reducer.name, reducer.canonical) .. "(" .. table.concat(params, ", ") .. ")"
-
-	local returns = {}
-	if reducer.ok_return_type ~= nil then
-		returns[#returns + 1] = "ok " .. value.label(reducer.ok_return_type, schema)
-	end
-	if reducer.err_return_type ~= nil then
-		returns[#returns + 1] = "err " .. value.label(reducer.err_return_type, schema)
-	end
-	if #returns > 0 then
-		out = out .. " -> " .. table.concat(returns, " / ")
-	end
-	return out
-end
-
 ---The title and the badge: what this is, and what the server said about it.
----@param sink SpacetimeSchemaSink
+---@param sink SpacetimeSectionSink
 ---@param entry table
 ---@param schema SpacetimeSchema
 local function heading(sink, entry, schema)
-	push(sink, both_names(entry.name, entry.canonical), "SpacetimeHeader")
+	sections.push(sink, require("spacetime.lib.schema").display_name(entry.name, entry.canonical), "SpacetimeHeader")
 
 	local count = type(entry.columns) == "table" and #entry.columns or 0
 	local pieces = { entry.is_view and "view" or (entry.is_system and "system table" or "table") }
@@ -269,10 +154,10 @@ local function heading(sink, entry, schema)
 	pieces[#pieces + 1] = ("%d column%s"):format(count, count == 1 and "" or "s")
 	pieces[#pieces + 1] = "schema v" .. tostring(schema.version)
 
-	push(sink, table.concat(pieces, " · "))
+	sections.push(sink, table.concat(pieces, " · "))
 end
 
----@param sink SpacetimeSchemaSink
+---@param sink SpacetimeSectionSink
 ---@param entry table
 ---@param schema SpacetimeSchema
 local function columns_section(sink, entry, schema)
@@ -297,10 +182,10 @@ local function columns_section(sink, entry, schema)
 		}
 	end
 
-	section(sink, "Columns", { { name = "name" }, { name = "type" }, { name = "flags" } }, cells)
+	sections.section(sink, "Columns", { { name = "name" }, { name = "type" }, { name = "flags" } }, cells)
 end
 
----@param sink SpacetimeSchemaSink
+---@param sink SpacetimeSectionSink
 ---@param entry table
 local function indexes_section(sink, entry)
 	local cells = {} ---@type SpacetimeGridCell[][]
@@ -311,10 +196,10 @@ local function indexes_section(sink, entry)
 			{ text = index.accessor and ("accessor " .. index.accessor) or "" },
 		}
 	end
-	section(sink, "Indexes", { { name = "name" }, { name = "algorithm" }, { name = "accessor" } }, cells)
+	sections.section(sink, "Indexes", { { name = "name" }, { name = "algorithm" }, { name = "accessor" } }, cells)
 end
 
----@param sink SpacetimeSchemaSink
+---@param sink SpacetimeSectionSink
 ---@param entry table
 local function constraints_section(sink, entry)
 	local cells = {} ---@type SpacetimeGridCell[][]
@@ -324,61 +209,7 @@ local function constraints_section(sink, entry)
 			{ text = tagged_columns(constraint.data, entry) },
 		}
 	end
-	section(sink, "Constraints", { { name = "name" }, { name = "data" } }, cells)
-end
-
----The database's reducers, whichever table is on screen.
----
----Point 2 of the module header: the access column exists only when the server
----told us something to put in it. A `Private` reducer is greyed out rather than
----hidden — it is part of the module, it is simply not yours to call.
----@param sink SpacetimeSchemaSink
----@param schema SpacetimeSchema
----@param database string
-local function reducers_section(sink, schema, database)
-	local reducers = schema.reducers or {}
-
-	local known = false
-	for _, reducer in ipairs(reducers) do
-		if type(reducer.visibility) == "string" then
-			known = true
-		end
-	end
-
-	local columns = { { name = "signature" } } ---@type SpacetimeGridColumn[]
-	if known then
-		columns = { { name = "access" }, { name = "signature" } }
-	end
-
-	local cells = {} ---@type SpacetimeGridCell[][]
-	for i, reducer in ipairs(reducers) do
-		-- Greyed out, not hidden. `nil` visibility is not `Private`; see point 2.
-		local hl = reducer.visibility == "Private" and "SpacetimeNull" or nil
-		if known then
-			cells[i] = { { text = reducer.visibility or "", hl = hl }, { text = signature(reducer, schema), hl = hl } }
-		else
-			cells[i] = { { text = signature(reducer, schema), hl = hl } }
-		end
-	end
-
-	section(sink, ("Reducers (%s)"):format(database), columns, cells)
-end
-
----Message text as buffer lines, each marked in full.
----
----Split on newlines first: a server's error is regularly several lines long, and
----folding it onto one would hide the part that says what went wrong.
----@param message any
----@return string[] lines
----@return SpacetimeGridSpan[] spans
-local function error_lines(message)
-	local text = (type(message) == "string" and message ~= "") and message or UNKNOWN_ERROR
-
-	local sink = new_sink()
-	for _, raw in ipairs(vim.split("error: " .. text, "\n", { plain = true })) do
-		push(sink, raw, "SpacetimeError")
-	end
-	return sink.lines, sink.spans
+	sections.section(sink, "Constraints", { { name = "name" }, { name = "data" } }, cells)
 end
 
 ---Every line of the view, and every span to mark on it.
@@ -393,29 +224,28 @@ local function build(current)
 		return { LOADING }, {}
 	end
 	if current.status == "error" then
-		return error_lines(current.error)
+		return sections.error_lines(current.error)
 	end
 
 	local schema = current.schema
 	if type(schema) ~= "table" then
-		return error_lines("no schema")
+		return sections.error_lines("no schema")
 	end
 
 	local entry = require("spacetime.lib.schema").entry_by_name(schema, current.table_name)
 	if entry == nil then
 		-- Data we do not have, not a programming error: the user named a table the
 		-- module does not define, or one that has since been dropped.
-		return error_lines(("%s has no table or view called %s"):format(current.database, current.table_name))
+		return sections.error_lines(("%s has no table or view called %s"):format(current.database, current.table_name))
 	end
 
-	local sink = new_sink()
+	local sink = sections.new()
 	heading(sink, entry, schema)
 	columns_section(sink, entry, schema)
 	-- A view has neither, and says so rather than dropping the headings: "this
 	-- view has no indexes" is a fact worth stating.
 	indexes_section(sink, entry)
 	constraints_section(sink, entry)
-	reducers_section(sink, schema, current.database)
 
 	return sink.lines, sink.spans
 end
@@ -444,7 +274,7 @@ function M.render()
 		return
 	end
 	-- Applying this view's one-key map is how the row grid's keys come off the
-	-- shared buffer; see point 5 of the module header.
+	-- shared buffer; see point 4 of the module header.
 	require("spacetime.ui.keys").apply(bufnr, M.KEYMAPS)
 
 	local lines, spans
@@ -454,7 +284,7 @@ function M.render()
 	else
 		-- Strip the "file:line: " a raise carries: the message is for a user, not
 		-- for whoever is reading this file.
-		lines, spans = error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
+		lines, spans = sections.error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
 	end
 
 	-- The one write. Everything above assembles; nothing below adds a line.

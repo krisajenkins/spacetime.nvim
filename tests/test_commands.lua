@@ -27,7 +27,7 @@
 local child, new_set = require("tests.helpers.child")()
 local expect = MiniTest.expect
 
--- The ten commands, in the order `:h spacetime-commands` documents them.
+-- The eleven commands, in the order `:h spacetime-commands` documents them.
 local COMMANDS = {
 	"Spacetime",
 	"SpacetimeToggle",
@@ -36,6 +36,7 @@ local COMMANDS = {
 	"SpacetimeTables",
 	"SpacetimeRows",
 	"SpacetimeSchema",
+	"SpacetimeReducers",
 	"SpacetimeLogs",
 	"SpacetimeLogsStop",
 	"SpacetimeStatus",
@@ -145,6 +146,7 @@ T["arguments are optional, required or forbidden per command"] = function()
 	expect.equality(defined.SpacetimeTables.nargs, "?")
 	expect.equality(defined.SpacetimeRows.nargs, "1")
 	expect.equality(defined.SpacetimeSchema.nargs, "1")
+	expect.equality(defined.SpacetimeReducers.nargs, "?")
 	expect.equality(defined.SpacetimeLogs.nargs, "?")
 	expect.equality(defined.SpacetimeLogsStop.nargs, "0")
 	expect.equality(defined.SpacetimeStatus.nargs, "0")
@@ -164,6 +166,7 @@ T["exactly the commands that take a name have completion"] = function()
 		SpacetimeTables = true,
 		SpacetimeRows = true,
 		SpacetimeSchema = true,
+		SpacetimeReducers = true,
 		SpacetimeLogs = true,
 	}
 	for _, name in ipairs(COMMANDS) do
@@ -189,7 +192,9 @@ T["every unimplemented command notifies once, and none of them raise"] = functio
 	-- `:SpacetimeDatabases`) are excluded because they really do something — see
 	-- tests/test_tree_ui.lua — as are `:SpacetimeRows` and `:SpacetimeSchema`,
 	-- which open the browser on a table (tests/test_rows_ui.lua and
-	-- tests/test_schema_ui.lua). `:SpacetimeStatus` has a file of its own.
+	-- tests/test_schema_ui.lua), and `:SpacetimeReducers`, which opens it on a
+	-- database (tests/test_reducers_ui.lua). `:SpacetimeStatus` has a file of its
+	-- own.
 	child.lua(
 		[[
 		for _, command in ipairs(...) do
@@ -305,6 +310,8 @@ T["completion is wired to the commands themselves"] = function()
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeConnect loc', 'cmdline')]]), { "local" })
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeTables spacet', 'cmdline')]]), { "spacetutorial" })
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeLogs arch', 'cmdline')]]), { "archive" })
+	-- A database, not a table: the reducers belong to the module.
+	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeReducers spacet', 'cmdline')]]), { "spacetutorial" })
 	expect.equality(
 		child.lua_get([[vim.fn.getcompletion('SpacetimeRows spacegym.mem', 'cmdline')]]),
 		{ "spacegym.member" }
