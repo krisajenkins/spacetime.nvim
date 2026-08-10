@@ -241,7 +241,8 @@ is simply not yours to call. Older servers answer with a schema that carries no
 visibility field at all, and there the marker is **omitted entirely** rather
 than guessed at.
 
-Nothing in this view is truncated, and it binds no keys of its own. The schema
+Nothing in this view is truncated, and the only key it binds is the shared `q`.
+The schema
 is the same one the sidebar caches, so describing a table in a database you
 have already expanded costs no request.
 
@@ -372,9 +373,12 @@ In the content window *while it is showing a grid*:
 | `y`  | Yank the cell under the cursor, untruncated               |
 | `Y`  | Yank the whole row as JSON                                |
 | `K`  | Float the whole row, every column untruncated             |
+| `q`  | Close the layout                                          |
 
 Yanks honour a register prefix (`"+y`) and your `clipboard` setting, exactly as
-any other yank would. In the `K` float, `q` or `<Esc>` closes it.
+any other yank would. In the `K` float, `q` or `<Esc>` closes the float — that
+is a mapping in the float's own buffer, so it closes the float rather than the
+layout.
 
 ### Logs
 
@@ -384,10 +388,13 @@ In the content window *while it is showing logs*:
 | --- | --------------------------------- |
 | `>` | Show only more severe log levels   |
 | `<` | Show less severe log levels too    |
+| `q` | Close the layout                   |
 
 The content window is shared by the three views, so each set of keys is
-unbound when another view takes the buffer over. The schema view binds no keys
-of its own.
+unbound when another view takes the buffer over. `q` is common to all three —
+and to the sidebar — because the sidebar and the content window are one thing:
+closing either closes both, whichever window you press it in. The schema view
+binds nothing else.
 
 ## Configuration
 

@@ -652,7 +652,9 @@ function M.detail()
 	vim.wo[winid].wrap = true
 
 	-- Set directly rather than through a table-driven loop: two keys, both
-	-- closing the same window, are not a key map worth documenting twice.
+	-- closing the same window, are not a key map worth documenting twice. This is
+	-- the float's own buffer, so its `q` shadows nothing — the grid's shared `q`
+	-- lives in the content buffer, and closes the layout rather than the float.
 	for _, lhs in ipairs({ "q", "<Esc>" }) do
 		vim.keymap.set("n", lhs, close_detail, {
 			buffer = bufnr,
@@ -713,6 +715,10 @@ M.KEYMAPS = {
 			M.detail()
 		end,
 	},
+	-- Shared with the sidebar and the log view: the layout is one thing, and `q`
+	-- closes it from either window. The `K` float's own `q` is a mapping in the
+	-- float's buffer, so it still wins there and still only closes the float.
+	require("spacetime.ui.keys").CLOSE,
 }
 
 ---Bind every content-window key, buffer-locally.

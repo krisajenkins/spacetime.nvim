@@ -34,9 +34,9 @@
 -- 5. **The content buffer is shared with the row grid.** `open` claims it
 --    through `ui/buffer.claim_content`, so a rows response still on the wire
 --    does not paint over the schema when it lands, and the render applies this
---    view's (empty) key map through `ui/keys`, which takes the grid's `s`, `]p`,
---    `y`, `Y` and `K` back off the buffer. A stale `]p` must not page a grid
---    that is no longer displayed.
+--    view's key map — the shared `q` and nothing else — through `ui/keys`, which
+--    takes the grid's `s`, `]p`, `y`, `Y` and `K` back off the buffer. A stale
+--    `]p` must not page a grid that is no longer displayed.
 
 local M = {}
 
@@ -45,13 +45,13 @@ M.OWNER = "schema"
 
 ---Every key the content window binds while it is showing a schema.
 ---
----Deliberately none: the schema view is text, with nothing to page, sort or
----filter. (The sidebar's `s` is what opens it; that is a mapping in the sidebar
----buffer, not in this one.) The table is still here, and still applied on every
----render, because applying it is what *unbinds* the row grid's keys — see point
----5 of the module header.
+---Only the shared `q`: the schema view is text, with nothing to page, sort or
+---filter, and the one key it has is the one every buffer in the layout has. (The
+---sidebar's `s` is what opens it; that is a mapping in the sidebar buffer, not in
+---this one.) Applying it on every render is also what *unbinds* the row grid's
+---keys — see point 5 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = {}
+M.KEYMAPS = { require("spacetime.ui.keys").CLOSE }
 
 local LOADING = "loading…"
 local UNKNOWN_ERROR = "unknown error"
@@ -443,8 +443,8 @@ function M.render()
 	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
 		return
 	end
-	-- Applying an empty key map is how the row grid's keys come off the shared
-	-- buffer; see point 5 of the module header.
+	-- Applying this view's one-key map is how the row grid's keys come off the
+	-- shared buffer; see point 5 of the module header.
 	require("spacetime.ui.keys").apply(bufnr, M.KEYMAPS)
 
 	local lines, spans

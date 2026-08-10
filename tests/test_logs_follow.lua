@@ -135,6 +135,21 @@ local T = new_set({
 				return vim.wait(patience, function() return LINE_COUNT() >= n + 1 end, 10)
 			end
 
+			---How many active libuv timers the child is holding.
+			---
+			---The flush timer is module-local to `ui/logs.lua`, so this is how a test
+			---sees whether a teardown really closed it: the child boots with none of
+			---its own, so any active timer here is the follow's.
+			function TIMERS()
+				local n = 0
+				vim.uv.walk(function(handle)
+					if handle:get_type() == 'timer' and handle:is_active() then
+						n = n + 1
+					end
+				end)
+				return n
+			end
+
 			---The window showing the content buffer.
 			function CONTENT_WIN()
 				return B.window_showing(B.find('spacetime://content'))
@@ -418,6 +433,37 @@ T["BufWipeout on the content buffer kills the stream"] = function()
 	child.lua([[ WRITES = 0 ]])
 	child.lua([[ vim.wait(350) ]])
 	expect.equality(child.lua_get([[WRITES]]), 0)
+end
+
+-- Closing the layout is the fourth teardown path, and the one `BufWipeout` cannot
+-- cover: `q` hides the content buffer rather than wiping it, so without a
+-- teardown of its own the flush timer would tick for the rest of the session.
+T["closing the layout stops the follow, timer and all"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs! spacegym') ]])
+	child.lua([[ FEED_LINES(2) ]])
+	expect.equality(child.lua_get([[FLUSHED(2, ...)]], { PATIENCE }), true)
+	expect.equality(child.lua_get([[TIMERS() >= 1]]), true)
+
+	child.lua([[ require('spacetime.ui.sidebar').close() ]])
+
+	expect.equality(child.lua_get([[KILLED]]), 1)
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 0)
+	-- The timer went with the handle, rather than being left to fire at a buffer
+	-- nobody is looking at.
+	expect.equality(child.lua_get([[TIMERS()]]), 0)
+
+	child.lua([[ WRITES = 0 ]])
+	child.lua([[ FEED_LINES(10) ]])
+	child.lua([[ vim.wait(350) ]])
+	expect.equality(child.lua_get([[WRITES]]), 0)
+
+	-- And the view knows it has stopped: `:SpacetimeLogsStop` has nothing left to
+	-- do, which is the fact a silent teardown had to get right.
+	child.lua([[ NOTIFIED = {} ]])
+	child.lua([[ vim.cmd('SpacetimeLogsStop') ]])
+	local notified = child.lua_get([[NOTIFIED]])
+	expect.equality(#notified, 1)
+	expect.equality(notified[1]:find("no log follow is running", 1, true) ~= nil, true)
 end
 
 -- The failure this exists to prevent is a `curl` still running after Neovim has

@@ -47,7 +47,9 @@
 --
 -- Every `require` is inside a function body, matching `commands.lua`: this
 -- module is only reached by running a command, and `spacetime.commands` requires
--- it back.
+-- it back. The one exception is `ui/keys` in `M.KEYMAPS`, which is evaluated when
+-- that table is constructed — safe because `ui/keys.lua` requires nothing at
+-- load time, so it cannot cycle back here.
 
 local M = {}
 
@@ -245,14 +247,21 @@ end
 
 ---Write the placeholder into the content buffer, unless it already says
 ---something. `ui/rows.lua` writes real content there, and reopening the layout
----must never clobber it.
+---must never clobber it — neither its lines nor the key map that goes with them.
+---
+---The placeholder gets the shared `q` and nothing else: `q` must work in the
+---content window from the moment the layout opens, not only once a view has
+---painted into it. Every view re-applies its own map on render, which puts this
+---one back among the rest.
 ---@param bufnr integer
 local function place_placeholder(bufnr)
 	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 	if #lines > 1 or (lines[1] or "") ~= "" then
 		return
 	end
+	local keys = require("spacetime.ui.keys")
 	require("spacetime.ui.buffer").set_lines(bufnr, M.PLACEHOLDER)
+	keys.apply(bufnr, { keys.CLOSE })
 end
 
 --------------------------------------------------------------------------------
@@ -565,11 +574,19 @@ end
 ---windows have gone would repaint a buffer nobody is looking at, and one that
 ---landed after a wipe would raise.
 ---
+---A log follow needs one more word than that. `cancel_all` kills its `curl`, but
+---the repeating flush timer is the log view's own handle and only its teardown
+---closes it — and closing the layout does not wipe the content buffer, so the
+---`BufWipeout` that would otherwise do it never fires. Left alone the timer would
+---tick for the rest of the session; `logs.teardown` is silent and idempotent, so
+---it is safe to call whether or not anything was being followed.
+---
 ---Neither window is ever the one that closes Neovim. When the content window is
 ---the last one standing it is handed back the buffer it displaced (or a fresh
 ---empty one) rather than being closed.
 function M.close()
 	require("spacetime.state").cancel_all()
+	require("spacetime.ui.logs").teardown()
 
 	local buffer = require("spacetime.ui.buffer")
 
@@ -793,13 +810,9 @@ M.KEYMAPS = {
 			M.refresh()
 		end,
 	},
-	{
-		keys = { "q" },
-		desc = "close the layout",
-		action = function()
-			M.close()
-		end,
-	},
+	-- Shared with the content window, so `q` means the same thing from either
+	-- half of the layout.
+	require("spacetime.ui.keys").CLOSE,
 	{
 		keys = { "y" },
 		desc = "yank the node's name",

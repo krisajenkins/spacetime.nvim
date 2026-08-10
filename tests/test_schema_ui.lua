@@ -361,18 +361,19 @@ T["taking the buffer from the row grid leaves none of its keymaps behind"] = fun
 	serve_schema(read("schema_v10.json"))
 
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "s", "y" })
+	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "q", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeSchema spacegym.security') ]])
 
 	expect.equality(content_lines()[1], "security")
 	-- Not one of the grid's keys is left on the buffer: a stale `]p` must not page
-	-- a grid that is no longer displayed.
-	expect.equality(content_keys(), {})
+	-- a grid that is no longer displayed. The shared `q` stays, because every
+	-- buffer in the layout binds it.
+	expect.equality(content_keys(), { "q" })
 
 	-- And going back to the grid binds them again.
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "s", "y" })
+	expect.equality(content_keys(), { "K", "Y", "[p", "]p", "q", "s", "y" })
 end
 
 --------------------------------------------------------------------------------

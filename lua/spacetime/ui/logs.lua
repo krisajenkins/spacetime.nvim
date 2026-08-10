@@ -32,8 +32,9 @@
 -- 5. **The content buffer is shared** with the row grid and the schema view.
 --    `open` claims it through `ui/buffer.claim_content`, so a rows response still
 --    on the wire does not paint over the logs when it lands, and the render
---    applies this view's key map through `ui/keys`, which binds `<` and `>` and
---    takes the grid's `s`, `]p`, `y`, `Y` and `K` back off the buffer.
+--    applies this view's key map through `ui/keys`, which binds `<`, `>` and the
+--    shared `q` and takes the grid's `s`, `]p`, `y`, `Y` and `K` back off the
+--    buffer.
 --
 -- The lines are laid out here rather than through `ui/grid.lua`: the grid has a
 -- header row this view does not want, and it truncates a cell to 40 columns,
@@ -58,9 +59,12 @@
 --    view is over it: a follow left running overnight must cost bounded memory,
 --    and the oldest line is the one worth losing.
 -- 9. **Every teardown path kills the handle *and* the timer.** `:SpacetimeLogsStop`,
---    `BufWipeout` on the content buffer and `VimLeavePre` all go through
---    `teardown`, because a leaked `curl` outliving Neovim and a repeating timer
---    firing at a wiped buffer are the same bug seen from two ends.
+--    `BufWipeout` on the content buffer, `VimLeavePre` and closing the layout all
+--    go through `teardown`, because a leaked `curl` outliving Neovim and a
+--    repeating timer firing at a wiped buffer are the same bug seen from two ends.
+--    Closing the layout is the path that needs `M.teardown`: it cancels the
+--    request but leaves the content buffer hidden rather than wiped, so the
+--    `BufWipeout` never fires and the timer would otherwise outlive the view.
 --
 -- The level filter — `<` and `>` — adds one more:
 --
@@ -120,6 +124,9 @@ M.KEYMAPS = {
 			M.filter(-1)
 		end,
 	},
+	-- Shared with the sidebar and the grid: the layout is one thing, and `q`
+	-- closes it from either window.
+	require("spacetime.ui.keys").CLOSE,
 }
 
 local LOADING = "loading…"
@@ -364,8 +371,8 @@ function M.render()
 		local ok_cursor, cursor = pcall(vim.api.nvim_win_get_cursor, winid)
 		at_bottom = ok_cursor and cursor[1] >= vim.api.nvim_buf_line_count(bufnr)
 	end
-	-- Applying an (as yet empty) key map is how the row grid's keys come off the
-	-- shared buffer; see point 5 of the module header.
+	-- Applying this view's key map is how the row grid's keys come off the shared
+	-- buffer; see point 5 of the module header.
 	require("spacetime.ui.keys").apply(bufnr, M.KEYMAPS)
 
 	local lines, spans
@@ -693,6 +700,16 @@ function M.filter(steps)
 	end
 	current.min_level = minimum
 	M.render()
+end
+
+---Stop following, silently: no paint, no message, and nothing said when there was
+---nothing to stop.
+---
+---What `ui/sidebar.close()` calls. `M.stop()` is the *user's* stop and reports
+---"no log follow is running" when there is none, which is exactly wrong for a `q`
+---that was never about the logs. Idempotent, like the teardown behind it.
+function M.teardown()
+	teardown(view)
 end
 
 ---Stop following, keeping what has already been shown.

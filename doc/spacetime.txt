@@ -575,7 +575,8 @@ SQL, both are shown: `ledgerEntry (ledger_entry)`, `onConnect (on_connect)`.
 The SQL endpoint accepts either spelling, so showing the one you wrote is a
 convenience rather than a trap. Where the two agree, only one name is printed.
 
-Nothing in this view is truncated, and it binds no keys of its own.
+Nothing in this view is truncated, and the only key it binds is the shared `q`
+(|spacetime-keys-shared|).
 
 ==============================================================================
 6. KEYMAPS                                                 *spacetime-keymaps*
@@ -625,10 +626,12 @@ how you retry a database that was paused. A database still expanded is
 refilled by the same keystroke.
 
 `q` closes both windows AND cancels every request still in flight, so a
-response cannot arrive after you have closed the browser. The content window
-is handed back the buffer it displaced. When the layout is all that is left of
-the tabpage, that window stays open with your buffer in it rather than closing
-Neovim.
+response cannot arrive after you have closed the browser; a log follow is
+stopped along with them. It works from either window — the sidebar and the
+content window are one thing, so `q` in the grid, the schema or the logs does
+exactly what `q` in the sidebar does. The content window is handed back the
+buffer it displaced. When the layout is all that is left of the tabpage, that
+window stays open with your buffer in it rather than closing Neovim.
 
 ROWS                                                     *spacetime-keys-rows*
 
@@ -640,13 +643,22 @@ In the content window while it is showing a grid: >
     y           yank the cell under the cursor, untruncated
     Y           yank the row as JSON
     K           show the whole row, every column untruncated
+    q           close the layout
 <
 See |spacetime-grid-sort|, |spacetime-grid-paging| and |spacetime-grid-yank|.
+`q` is the shared key — see |spacetime-keys-shared|. In the `K` float it is a
+mapping in the float's own buffer, so there it closes the float instead.
 
 LOGS                                                     *spacetime-keys-logs*
 
-In the content window while it is showing logs, two keys narrow and widen what
-is shown. `>` raises the minimum level by one step; `<` lowers it. >
+In the content window while it is showing logs: >
+
+    >           show only more severe log levels
+    <           show less severe log levels too
+    q           close the layout
+<
+`q` is the shared key — see |spacetime-keys-shared|. The other two narrow and
+widen what is shown: `>` raises the minimum level by one step, `<` lowers it. >
 
     Trace  →  Debug  →  Info  →  Warn  →  Error
 <
@@ -672,7 +684,11 @@ at the default. The filter is per view: opening any other logs starts at
 The content window is shared by the three views, so each set of keys is
 unbound when another view takes the buffer over, and put back with the next
 one you open. A `]p` left behind could otherwise page a grid that is no longer
-on screen. The schema view binds no keys of its own.
+on screen.
+
+`q` is the one key all three bind, and the sidebar binds it too: the sidebar
+and the content window are one thing, so closing either closes both, whichever
+window you press it in. The schema view binds nothing else.
 
 ==============================================================================
 7. CONFIGURATION                                            *spacetime-config*

@@ -800,4 +800,32 @@ T["closing the browser cancels a fetch that is still in flight"] = function()
 	expect.equality(content_lines(), { "loading…" })
 end
 
+-- The sidebar and the content window are one thing, so `q` in the grid does what
+-- `q` in the sidebar does. Mirrors the sidebar case in `tests/test_tree_ui.lua`.
+T["q from the content window closes the whole layout too"] = function()
+	serve_sql('"alpha"', 200, one_column("alpha_id", "from alpha"))
+	child.lua([[ HOLD_SQL = true ]])
+	expand_to(2)
+
+	child.type_keys("<CR>")
+	focus_content()
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 1)
+
+	child.type_keys("q")
+
+	expect.equality(child.lua_get([[S.is_open()]]), false)
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 0)
+	-- Neither of our buffers is on screen any more...
+	local shown = child.lua_get([[
+		vim.tbl_map(function(winid)
+			return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(winid))
+		end, vim.api.nvim_tabpage_list_wins(0))
+	]])
+	for _, name in ipairs(shown) do
+		expect.no_equality(name:find("spacetime://", 1, true), 1)
+	end
+	-- ...and the child is still alive, one window showing what the layout displaced.
+	expect.equality(#shown, 1)
+end
+
 return T

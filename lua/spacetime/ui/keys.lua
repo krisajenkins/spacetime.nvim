@@ -10,8 +10,12 @@
 -- live when the other takes the buffer over. A `]p` left behind by the grid
 -- would page a table that is no longer on screen, and a `s` would sort a layout
 -- that no longer exists. So `M.apply` is "bind exactly these": whatever the last
--- call put in the buffer comes off first, and a view with no keys of its own
--- (the schema view) clears the buffer by asking for none.
+-- call put in the buffer comes off first, and a view whose only key is the
+-- shared `q` (the schema view) clears the buffer by asking for that alone.
+--
+-- One mapping is defined here rather than by a view: `M.CLOSE`. Every buffer the
+-- plugin paints binds it, by listing it in its own `KEYMAPS`, so the tables stay
+-- the single source of truth for the documentation and for the sidebar's `?`.
 --
 -- What was applied is tracked here rather than read back from Neovim, because
 -- `nvim_buf_get_keymap` cannot tell one of ours from one the user set: deleting
@@ -28,6 +32,22 @@ local M = {}
 ---@field keys string[]
 ---@field desc string Shown in `:map` and printed by the sidebar's `?`.
 ---@field action fun()
+
+---The one key every spacetime buffer binds: the sidebar and the content window
+---are one thing, so `q` closes the layout from either side.
+---
+---Defined once and listed by each view's `KEYMAPS`, so the sidebar's `?`, the
+---documentation and the mappings cannot disagree about what `q` does. The `K`
+---float in `ui/rows.lua` is not one of those buffers: its own `q` closes the
+---float and leaves the layout alone.
+---@type SpacetimeKeymap
+M.CLOSE = {
+	keys = { "q" },
+	desc = "close the layout",
+	action = function()
+		require("spacetime.ui.sidebar").close()
+	end,
+}
 
 -- Buffer -> the left-hand sides `M.apply` last bound there. Module-local: it is
 -- bookkeeping, not state any renderer has business reading.

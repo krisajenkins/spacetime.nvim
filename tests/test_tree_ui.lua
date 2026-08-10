@@ -666,10 +666,18 @@ T["every documented key is mapped, buffer-locally, in the sidebar"] = function()
 		expect.equality({ lhs, map.buffer, map.callback }, { lhs, 1, "function" })
 	end
 
-	-- And they really are buffer-local: the content buffer has none of them.
+	-- And they really are buffer-local: the sidebar's own keys are not in the
+	-- content buffer.
 	child.lua([[ vim.api.nvim_set_current_win(vim.fn.win_findbuf(B.find('spacetime://content'))[1]) ]])
-	-- No mapping at all: no `buffer` field, and nothing to call.
-	expect.equality(child.lua_get(described, { "q" }), { callback = "nil" })
+	for _, lhs in ipairs({ "r", "gi", "?" }) do
+		-- No mapping at all: no `buffer` field, and nothing to call.
+		expect.equality(child.lua_get(described, { lhs }), { callback = "nil" })
+	end
+
+	-- `q` is the exception, and deliberately so: the sidebar and the content
+	-- window are one thing, so `q` closes the layout from either side.
+	local close = child.lua_get(described, { "q" })
+	expect.equality({ close.buffer, close.callback }, { 1, "function" })
 end
 
 T["y yanks the node's name and gi yanks its identity"] = function()
