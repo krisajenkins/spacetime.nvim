@@ -7,8 +7,8 @@ A Neovim plugin for [SpacetimeDB](https://spacetimedb.com).
 > you run them — see [Commands](#commands). What works today is connection
 > resolution (`:SpacetimeStatus`) and the browser itself (`:Spacetime`): the
 > layout, a sidebar listing your databases and the tables and views inside them,
-> and `<CR>` on a table to see its rows. Sorting, paging and the schema view are
-> the next pieces.
+> and `<CR>` on a table to see its rows, sorted by whichever column you press
+> `s` on. Paging and the schema view are the next pieces.
 
 ## Requirements
 
@@ -117,6 +117,13 @@ Cells wider than 40 columns are cut with a `…`; paging past the first 100 rows
 comes with a later release. The rows are cached per table for the session, and
 `r` in the sidebar drops that database's rows along with its schema.
 
+`s` in the grid sorts by the column the cursor is in, and pressing it again
+reverses that column. The sort is on the values the server sent, not on the text
+they are rendered as — `9` sorts before `10`, and a timestamp column sorts by
+the instant rather than by the string — and `NULL`s go last whichever way round
+the column is. Nothing is refetched and no row is rewritten; only the order the
+rows are painted in changes, and the cursor stays on the row it was on.
+
 Switching tables quickly is safe: opening a second table cancels the first
 table's request, and a response that arrives after you have moved on is dropped
 rather than painted over the table you are now looking at.
@@ -141,6 +148,14 @@ These are buffer-local to the sidebar.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the system
 clipboard.
+
+#### Content-window keymaps
+
+These are buffer-local to the content window — the grid.
+
+| Key   | Does                                                    |
+| ----- | ------------------------------------------------------- |
+| `s`   | Sort by the column under the cursor; again to reverse it |
 
 ### `:SpacetimeStatus`
 

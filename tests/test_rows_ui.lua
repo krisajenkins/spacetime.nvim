@@ -288,6 +288,156 @@ T["a NULL cell is marked, and so is a primary-key header"] = function()
 end
 
 --------------------------------------------------------------------------------
+-- Sorting
+--------------------------------------------------------------------------------
+
+-- Two columns whose value order and text order disagree: `9` renders as `"9"`,
+-- which sorts *after* `"10"`.
+local NUMERIC = table.concat({
+	'[{"schema":{"elements":[',
+	'{"name":{"some":"n"},"algebraic_type":{"U64":[]}},',
+	'{"name":{"some":"label"},"algebraic_type":{"String":[]}}',
+	']},"rows":[[9,"nine"],[10,"ten"],[1,"one"]]}]',
+})
+
+---Focus the content window, which is where the grid's keys are bound.
+local function focus_content()
+	child.lua([[ vim.api.nvim_set_current_win(B.window_showing(B.find('spacetime://content'))) ]])
+end
+
+---The trailing word of every data line: the `label` column, in display order.
+---@return string[]
+local function labels()
+	local out = {}
+	for i, line in ipairs(content_lines()) do
+		if i > 1 then
+			out[#out + 1] = line:match("%a+$")
+		end
+	end
+	return out
+end
+
+---@return integer[] `{ line, col }`, 1-based line as Neovim reports it.
+local function cursor()
+	return child.lua_get([[vim.api.nvim_win_get_cursor(0)]])
+end
+
+T["s sorts by the raw value of the column under the cursor, and the cursor follows its row"] = function()
+	serve_sql('"alpha"', 200, NUMERIC)
+	expand_to(2)
+	child.type_keys("<CR>")
+	-- Data order to begin with.
+	expect.equality(labels(), { "nine", "ten", "one" })
+
+	focus_content()
+	-- On the `10` row, in the numeric column.
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 3, 0 }) ]])
+	child.type_keys("s")
+
+	-- 9 before 10: sorting the display strings would have put `10` first.
+	expect.equality(labels(), { "one", "nine", "ten" })
+	-- And the cursor is on the row it was on — now the last one — not on line 3.
+	expect.equality(cursor(), { 4, 0 })
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+
+	-- The rows themselves were never touched: only the mapping was rebuilt.
+	expect.equality(child.lua_get([[STATE.cache_get(STATE.key('rows', 'spacegym', 'alpha')).rows[1][2] ]]), "nine")
+end
+
+T["s again reverses the same column"] = function()
+	serve_sql('"alpha"', 200, NUMERIC)
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 3, 0 }) ]]) -- the `10` row
+	child.type_keys("s")
+	expect.equality(cursor(), { 4, 0 })
+
+	child.type_keys("s")
+	expect.equality(labels(), { "ten", "nine", "one" })
+	expect.equality(cursor(), { 2, 0 })
+
+	-- A different column starts ascending again rather than inheriting the
+	-- direction the last column was left in.
+	child.lua([[
+		local line = vim.api.nvim_buf_get_lines(0, 1, 2, false)[1]
+		vim.api.nvim_win_set_cursor(0, { 2, assert(line:find('ten', 1, true)) - 1 })
+	]])
+	child.type_keys("s")
+	expect.equality(labels(), { "nine", "one", "ten" })
+end
+
+T["the cursor keeps its column when its row moves"] = function()
+	serve_sql('"alpha"', 200, read("sql_rows.json"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	-- The `code` column, on the 🎟 row. `£` is 2 bytes and `🎟` is 4, so the
+	-- column starts at a *different byte offset* on the two rows — which is the
+	-- case a byte-preserving cursor restore would get wrong.
+	child.lua([[
+		local line = vim.api.nvim_buf_get_lines(0, 2, 3, false)[1]
+		vim.api.nvim_win_set_cursor(0, { 3, assert(line:find('some(', 1, true)) - 1 })
+	]])
+	---The display column a byte offset sits at on `line` — the units the grid
+	---aligns in, and the only ones in which "the same column" means anything.
+	---@param line integer
+	---@param col integer
+	---@return integer
+	local function display_column(line, col)
+		return child.lua_get(
+			[[(function(at, col)
+				return vim.fn.strdisplaywidth(vim.api.nvim_buf_get_lines(0, at - 1, at, false)[1]:sub(1, col))
+			end)(...)]],
+			{ line, col }
+		)
+	end
+
+	local before = cursor()
+	local before_column = display_column(before[1], before[2])
+	child.type_keys("s") -- ascending: "£" < "🎟" byte-wise, so nothing moves
+	expect.equality(cursor(), before)
+
+	child.type_keys("s") -- descending: the 🎟 row goes first
+	expect.equality(content_lines()[2]:find("🎟", 1, true) ~= nil, true)
+	local after = cursor()
+	expect.equality(after[1], 2)
+	-- Still on the first byte of that cell, at the offset *this* line puts it at.
+	expect.equality(
+		after[2],
+		child.lua_get([[vim.api.nvim_buf_get_lines(0, 1, 2, false)[1]:find('some(', 1, true) - 1]])
+	)
+	-- And the same grid column, said in the units the grid aligns in.
+	expect.equality(display_column(after[1], after[2]), before_column)
+end
+
+T["s on the header sorts without moving the cursor, and does nothing at all without a grid"] = function()
+	serve_sql('"alpha"', 200, NUMERIC)
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ vim.api.nvim_win_set_cursor(0, { 1, 0 }) ]])
+	child.type_keys("s")
+	expect.equality(labels(), { "one", "nine", "ten" })
+	expect.equality(cursor(), { 1, 0 })
+
+	-- An error is buffer text, not a grid: `s` must be a no-op on it rather than
+	-- a raise under the cursor.
+	child.lua([[ STATE.cache_invalidate(STATE.key('rows', 'spacegym', 'alpha')) ]])
+	serve_sql('"alpha"', 400, "SqlError: Unknown table: alpha")
+	child.lua([[ S.select() ]])
+	expect.equality(content_lines(), { "error: SqlError: Unknown table: alpha" })
+
+	focus_content()
+	child.lua([[ expect.no_error(function() vim.cmd('normal s') end) ]])
+	expect.equality(content_lines(), { "error: SqlError: Unknown table: alpha" })
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+--------------------------------------------------------------------------------
 -- Errors
 --------------------------------------------------------------------------------
 

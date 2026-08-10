@@ -128,6 +128,53 @@ function M.truncate(s, width, ellipsis)
 	return fit(s, budget) .. ellipsis, true
 end
 
+---Which grid column a byte offset on `line` falls in.
+---
+---The inverse of the layout, and the one thing "sort by the column under the
+---cursor" needs. It works off *display* columns rather than byte ranges on
+---purpose: the byte offsets of a cell differ line by line (`£` is 2 bytes, `🎟`
+---is 4), but the display column a column starts at is the same on every line,
+---header included — which is precisely the invariant `layout` maintains. So the
+---answer is the same whether the cursor is on the header or on a row.
+---
+---A column owns its own width plus the separator that follows it, so a cursor
+---parked in the padding after a cell still means that cell. The last column owns
+---everything past its start, so a cursor beyond the end of a short line — Neovim
+---allows one past the last byte — lands on it rather than nowhere.
+---@param line string The line the cursor is on.
+---@param col integer 0-based byte offset, as `nvim_win_get_cursor` reports it.
+---@param widths integer[] `layout.widths`.
+---@param opts? SpacetimeGridOpts Only `separator` is read.
+---@return integer # 1-based column index, clamped to `1..#widths`.
+function M.column_at(line, col, widths, opts)
+	local separator = (opts and opts.separator) or DEFAULT_SEPARATOR
+	local gap = M.display_width(separator)
+
+	-- Back the offset off to a character boundary first. A cursor never sits
+	-- inside a multibyte sequence, but an offset computed by arithmetic can, and
+	-- `strdisplaywidth` charges four columns for the `<c2>` an orphaned lead byte
+	-- displays as — enough to report the next column along.
+	local boundary = col
+	while boundary > 0 do
+		local byte = line:byte(boundary + 1)
+		if byte == nil or byte < 0x80 or byte >= 0xC0 then
+			break
+		end
+		boundary = boundary - 1
+	end
+
+	local cursor = M.display_width(line:sub(1, boundary))
+
+	local at = 0
+	for c = 1, #widths - 1 do
+		at = at + widths[c] + gap
+		if cursor < at then
+			return c
+		end
+	end
+	return math.max(1, #widths)
+end
+
 ---Normalise a cell to its text and optional highlight group.
 ---@param cell string|SpacetimeGridCell
 ---@param row integer

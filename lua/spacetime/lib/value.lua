@@ -546,6 +546,34 @@ local function render_product(value, product, ctx, depth, refs)
 	return "{ " .. table.concat(pieces, ", ") .. " }", nil
 end
 
+---Which variant of a Sum a value carries.
+---
+---`[tag, payload]` is the wire shape; `{name = payload}` is the serializer's
+---other spelling and costs one lookup to accept.
+---@param value any
+---@param variants any[]
+---@return integer|nil index 1-based index into `variants`.
+---@return integer|nil wire_tag The 0-based tag as it arrived.
+---@return any payload
+local function sum_variant(value, variants)
+	if type(value) ~= "table" then
+		return nil, nil, nil
+	end
+	if type(value[1]) == "number" then
+		local wire_tag = value[1]
+		return wire_tag + 1, wire_tag, value[2]
+	end
+	local key = next(value)
+	if type(key) == "string" then
+		for i, variant in ipairs(variants) do
+			if element_name(variant) == key then
+				return i, i - 1, value[key]
+			end
+		end
+	end
+	return nil, nil, nil
+end
+
 ---@param value any
 ---@param sum any
 ---@param ctx spacetime.ValueCtx
@@ -559,25 +587,7 @@ local function render_sum(value, sum, ctx, depth, refs)
 		return untyped(value, ctx, depth)
 	end
 
-	-- `[tag, payload]` is the wire shape; `{name = payload}` is the serializer's
-	-- other spelling and costs one lookup to accept.
-	local index, wire_tag, payload
-	if type(value[1]) == "number" then
-		wire_tag = value[1]
-		index = wire_tag + 1
-		payload = value[2]
-	else
-		local key = next(value)
-		if type(key) == "string" then
-			for i, variant in ipairs(variants) do
-				if element_name(variant) == key then
-					index, wire_tag, payload = i, i - 1, value[key]
-					break
-				end
-			end
-		end
-	end
-
+	local index, wire_tag, payload = sum_variant(value, variants)
 	if index == nil then
 		return untyped(value, ctx, depth)
 	end
@@ -676,6 +686,240 @@ render = function(value, atype, ctx, depth, refs)
 	end
 
 	return untyped(value, ctx, depth)
+end
+
+--------------------------------------------------------------------------------
+-- Sort keys
+--------------------------------------------------------------------------------
+
+-- Sorting the grid (`ui/rows.lua`, via `lib/sort.lua`) must never compare the
+-- *display* strings this module produces: `"10"` sorts before `"9"`, and an
+-- ISO-8601 timestamp sorts by the year's leading digit rather than by the
+-- instant. So a sort key is the same reflective walk as the render — which is
+-- exactly why it lives here — stopping at comparable atoms instead of text.
+--
+-- A key is a list of atoms compared lexicographically, and each atom carries the
+-- class it belongs to. Two atoms of different classes are ordered by class
+-- alone, so a number is never compared against a string: that is what keeps a
+-- mixed-type column (a sum, a big integer that arrived as digits next to one
+-- that arrived as a number) from making `table.sort` raise "invalid order
+-- function for sorting".
+--
+-- `null` is a flag on the key rather than an atom class, because NULL sorts last
+-- in *both* directions: the direction orders the values, and a missing value is
+-- not one. A nested NULL — one element of a product — is an atom, and does flip
+-- with the direction along with the rest of the composite.
+
+local SORT_NUMBER = 1
+local SORT_TEXT = 2
+local SORT_NULL = 3
+
+---@class SpacetimeSortAtom
+---@field class integer `1` numeric, `2` text, `3` absent.
+---@field number? number Set when `class == 1`.
+---@field text? string Set when `class == 2`.
+
+---@class SpacetimeSortKey
+---@field null boolean Sorts last in both directions.
+---@field atoms SpacetimeSortAtom[] Compared lexicographically.
+
+---@param atoms SpacetimeSortAtom[]
+local function push_null(atoms)
+	atoms[#atoms + 1] = { class = SORT_NULL }
+end
+
+---@param atoms SpacetimeSortAtom[]
+---@param n number
+local function push_number(atoms, n)
+	-- NaN compares false against everything, itself included, so a key holding
+	-- one would make the comparator inconsistent and `table.sort` would raise.
+	-- It has no place in an order; it is keyed as absent and sorts last.
+	if n ~= n then
+		push_null(atoms)
+		return
+	end
+	atoms[#atoms + 1] = { class = SORT_NUMBER, number = n }
+end
+
+---@param atoms SpacetimeSortAtom[]
+---@param s string
+local function push_text(atoms, s)
+	atoms[#atoms + 1] = { class = SORT_TEXT, text = s }
+end
+
+---An integer that arrived as text: `lib/json.lua` hands back a run of 16 or more
+---digits as a string, and a U256 arrives as hex.
+---
+---The number comes first so it orders against a column's small values, which
+---arrive as plain numbers; the digits follow as a tiebreak, because past 2^53
+---`tonumber` is lossy and two distinct identifiers would otherwise compare equal.
+---@param atoms SpacetimeSortAtom[]
+---@param s string
+local function push_integer_text(atoms, s)
+	local n = tonumber(s)
+	if n ~= nil then
+		push_number(atoms, n)
+	end
+	push_text(atoms, s)
+end
+
+-- Forward declaration: the typed walk falls back to the untyped one, which
+-- recurses back through neither — but the typed one is referenced first.
+---@type fun(value: any, atype: any, ctx: spacetime.ValueCtx, atoms: SpacetimeSortAtom[], depth: integer, refs: integer)
+local sort_atoms
+
+---Key a value with no type to guide it: the fallback for an absent type, an
+---unresolvable `Ref`, and any value whose shape contradicts its type.
+---@param value any
+---@param ctx spacetime.ValueCtx
+---@param atoms SpacetimeSortAtom[]
+---@param depth integer
+local function untyped_atoms(value, ctx, atoms, depth)
+	if value == nil or value == vim.NIL then
+		push_null(atoms)
+		return
+	end
+
+	local kind = type(value)
+	if kind == "number" then
+		push_number(atoms, value)
+	elseif kind == "string" then
+		push_text(atoms, value)
+	elseif kind == "boolean" then
+		push_number(atoms, value and 1 or 0)
+	elseif kind ~= "table" or depth >= ctx.max_depth then
+		push_text(atoms, tostring(value))
+	elseif #value > 0 then
+		for i = 1, math.min(#value, ctx.max_elements) do
+			untyped_atoms(value[i], ctx, atoms, depth + 1)
+		end
+	else
+		-- `pairs` order is a hash order, so keys are sorted: two renders of the
+		-- same value must key the same way.
+		local keys = {}
+		for key in pairs(value) do
+			keys[#keys + 1] = key
+		end
+		table.sort(keys, function(a, b)
+			return tostring(a) < tostring(b)
+		end)
+		for _, key in ipairs(keys) do
+			push_text(atoms, tostring(key))
+			untyped_atoms(value[key], ctx, atoms, depth + 1)
+		end
+	end
+end
+
+sort_atoms = function(value, atype, ctx, atoms, depth, refs)
+	if depth > ctx.max_depth or refs > ctx.max_depth then
+		return
+	end
+	if value == nil or value == vim.NIL then
+		push_null(atoms)
+		return
+	end
+
+	local tag, payload = type_tag(atype)
+	if tag == "Ref" then
+		local resolved = resolve(ctx, payload)
+		if resolved ~= nil then
+			sort_atoms(value, resolved, ctx, atoms, depth, refs + 1)
+			return
+		end
+		tag = nil
+	end
+
+	if tag == "String" and type(value) == "string" then
+		push_text(atoms, value)
+		return
+	end
+
+	if tag ~= nil and (INTEGERS[tag] or tag == "F32" or tag == "F64") then
+		if type(value) == "number" then
+			push_number(atoms, value)
+			return
+		end
+		if type(value) == "string" then
+			push_integer_text(atoms, value)
+			return
+		end
+	end
+
+	if tag == "Bool" and type(value) == "boolean" then
+		push_number(atoms, value and 1 or 0)
+		return
+	end
+
+	if tag == "Array" and type(value) == "table" then
+		for i = 1, math.min(#value, ctx.max_elements) do
+			sort_atoms(value[i], payload, ctx, atoms, depth + 1, refs)
+		end
+		return
+	end
+
+	if tag == "Product" then
+		local kind, field = special_of(payload)
+		if kind ~= nil then
+			-- A Timestamp sorts by its micros, which is the one thing its ISO text
+			-- would get wrong across a year boundary; an Identity sorts by the exact
+			-- digits it arrived as, which is what the grid shows.
+			local scalar = unwrap_scalar(value, field)
+			if kind == "timestamp" or kind == "duration" then
+				local micros = to_micros(scalar)
+				if micros ~= nil then
+					push_number(atoms, micros)
+					return
+				end
+			elseif type(scalar) == "string" then
+				push_text(atoms, scalar)
+				return
+			elseif type(scalar) == "number" then
+				push_number(atoms, scalar)
+				return
+			end
+		else
+			local elements = type(payload) == "table" and payload.elements or nil
+			if type(elements) == "table" and type(value) == "table" then
+				for i, element in ipairs(elements) do
+					local name = element_name(element)
+					local item = value[i]
+					if item == nil and name ~= nil then
+						item = value[name]
+					end
+					local etype = type(element) == "table" and element.algebraic_type or nil
+					sort_atoms(item, etype, ctx, atoms, depth + 1, refs)
+				end
+				return
+			end
+		end
+	end
+
+	if tag == "Sum" then
+		local variants = type(payload) == "table" and payload.variants or nil
+		if type(variants) == "table" then
+			local index, wire_tag, item = sum_variant(value, variants)
+			if index ~= nil then
+				local some_type, is_option = option_type(payload)
+				if is_option then
+					-- `none` is what the grid renders as NULL, so it keys as one.
+					if index == 1 then
+						sort_atoms(item, some_type, ctx, atoms, depth + 1, refs)
+					else
+						push_null(atoms)
+					end
+					return
+				end
+				-- Variants group before they order: the tag first, the payload after.
+				push_number(atoms, wire_tag --[[@as number]])
+				local variant = variants[index]
+				local vtype = type(variant) == "table" and variant.algebraic_type or nil
+				sort_atoms(item, vtype, ctx, atoms, depth + 1, refs)
+				return
+			end
+		end
+	end
+
+	untyped_atoms(value, ctx, atoms, depth)
 end
 
 --------------------------------------------------------------------------------
@@ -810,6 +1054,71 @@ function M.format(value, atype, types, opts)
 		return fallback, nil
 	end
 	return "", nil
+end
+
+---A raw SATS value plus its type, as a key that can be *compared* — the sort
+---order of a grid column, never its display text.
+---
+---`9` keys before `10` because a U64 keys as a number; a Timestamp keys as its
+---micros; an Option's `none` keys as NULL. Never raises: a value that defeats
+---the walk keys as NULL and sorts last, because one odd cell must not take the
+---sort down.
+---@param value any Decoded by `spacetime.lib.json`; `vim.NIL` is a JSON `null`.
+---@param atype any Raw AlgebraicType, or `nil` for an untyped key.
+---@param types? SpacetimeSchema|table[] The schema model, or a bare typespace array.
+---@param opts? SpacetimeValueOpts
+---@return SpacetimeSortKey
+function M.sort_key(value, atype, types, opts)
+	local atoms = {} ---@type SpacetimeSortAtom[]
+	local ok = pcall(sort_atoms, value, atype, new_ctx(types, opts), atoms, 0, 0)
+	if not ok then
+		atoms = { { class = SORT_NULL } }
+	end
+	-- A key that is nothing but an absence *is* NULL. One nested inside a
+	-- composite is only an atom of it, and flips with the sort direction.
+	local null = #atoms == 0 or (#atoms == 1 and atoms[1].class == SORT_NULL)
+	return { null = null, atoms = atoms }
+end
+
+---Three-way comparison of two sort keys: `-1`, `0` or `1`.
+---
+---A total order, which is the whole point — `table.sort` raises on a comparator
+---that contradicts itself. Atoms are compared class first, so no comparison is
+---ever made between a number and a string, and a key that is a prefix of another
+---sorts before it. A NULL key compares greater than any other, but callers
+---wanting "NULL last in both directions" must handle `null` *before* the
+---direction is applied.
+---@param a SpacetimeSortKey
+---@param b SpacetimeSortKey
+---@return integer
+function M.compare_keys(a, b)
+	if a.null ~= b.null then
+		return a.null and 1 or -1
+	end
+	if a.null then
+		return 0
+	end
+
+	local shared = math.min(#a.atoms, #b.atoms)
+	for i = 1, shared do
+		local x, y = a.atoms[i], b.atoms[i]
+		if x.class ~= y.class then
+			return x.class < y.class and -1 or 1
+		end
+		if x.class == SORT_NUMBER then
+			if x.number ~= y.number then
+				return (x.number or 0) < (y.number or 0) and -1 or 1
+			end
+		elseif x.class == SORT_TEXT then
+			if x.text ~= y.text then
+				return (x.text or "") < (y.text or "") and -1 or 1
+			end
+		end
+	end
+	if #a.atoms ~= #b.atoms then
+		return #a.atoms < #b.atoms and -1 or 1
+	end
+	return 0
 end
 
 ---`M.format` in the shape `spacetime.ui.grid` consumes.

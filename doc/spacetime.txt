@@ -22,8 +22,8 @@ full command set is defined and completes its arguments, but several commands
 are placeholders that say so when you run them — see |spacetime-commands|.
 What works today is connection resolution (|:SpacetimeStatus|) and the browser
 itself (|:Spacetime|): the window layout, a sidebar listing your databases and
-the tables and views inside them, and `<CR>` on a table to see its rows.
-Sorting, paging and the schema view are the next pieces.
+the tables and views inside them, `<CR>` on a table to see its rows, and `s`
+to sort them by a column. Paging and the schema view are the next pieces.
 
 ==============================================================================
 2. REQUIREMENTS                                        *spacetime-requirements*
@@ -324,6 +324,31 @@ A SQL error — an unknown table, a syntax error — arrives from the server as
 plain text and is rendered in the content window verbatim: >
 
     error: Unknown table: widgets
+<
+SORTING                                               *spacetime-sidebar-sort*
+
+`s` in the content window sorts the grid by the column the cursor is in.
+Pressing it again on the same column reverses it; pressing it on another
+column starts that one ascending.
+
+The comparison is on the values the server sent, never on the text they are
+rendered as. `9` sorts before `10` — a Timestamp column sorts by the instant
+and a TimeDuration column by its micros, both of which their formatted text
+would get wrong. `NULL` cells, and an Option's `none`, sort last whichever way
+round the column is: the direction orders the values, and a missing value is
+not one. Equal values keep the order the server sent them in.
+
+Nothing is refetched and no row is rewritten: sorting rebuilds only the
+mapping from screen line to row, so the cursor can follow the row it was on
+rather than the line it was on, and it stays in the column it was in.
+
+Re-opening a table shows it in the order the server sent it again.
+
+KEYMAPS                                              *spacetime-grid-keymaps*
+
+These are buffer-local to the content window while it is showing a grid. >
+
+    s           sort by the column under the cursor (again to reverse)
 <
 KEYMAPS                                            *spacetime-sidebar-keymaps*
 

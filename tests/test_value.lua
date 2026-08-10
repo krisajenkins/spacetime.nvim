@@ -265,6 +265,49 @@ T["cell returns the grid cell shape and feeds grid.layout"] = function()
 	end)
 end
 
+T["a sort key orders the value, not the text it renders as"] = function()
+	local timestamp = {
+		Product = {
+			elements = {
+				{ name = { some = "__timestamp_micros_since_unix_epoch__" }, algebraic_type = { I64 = {} } },
+			},
+		},
+	}
+
+	local function key(v, atype)
+		return value.sort_key(v, atype, model())
+	end
+	local function less(a, b)
+		return value.compare_keys(a, b) < 0
+	end
+
+	-- The whole point: `"10"` renders before `"9"` and sorts after it.
+	expect.equality(less(key(9, { U64 = {} }), key(10, { U64 = {} })), true)
+	expect.equality(value.format(9, { U64 = {} }) > value.format(10, { U64 = {} }), true)
+
+	-- A timestamp keys as its micros, not as the ISO string.
+	expect.equality(less(key({ 1 }, timestamp), key({ 2 }, timestamp)), true)
+	expect.equality(value.compare_keys(key({ 7 }, timestamp), key(7, timestamp)), 0)
+
+	-- NULL, `none`, and a value no key survives are all absences, and an absence
+	-- is flagged rather than ordered.
+	local option = rows_of("sql_rows.json").columns[3].algebraic_type -- Option<String>
+	expect.equality(key(vim.NIL, { String = {} }).null, true)
+	expect.equality(key({ 1, {} }, option).null, true)
+	expect.equality(key({ 0, "GBP" }, option).null, false)
+	expect.equality(value.compare_keys(key(nil, nil), key(vim.NIL, nil)), 0)
+	expect.equality(less(key("a", { String = {} }), key(nil, nil)), true)
+
+	-- A key that is a prefix of another sorts before it, and nothing raises on
+	-- arguments no schema would produce.
+	expect.no_error(function()
+		local pair = key({ "a", "b" }, nil)
+		expect.equality(less(key({ "a" }, nil), pair), true)
+		expect.equality(value.compare_keys(pair, pair), 0)
+		expect.equality(key(print, nil).null, false)
+	end)
+end
+
 T["durations render at a sensible scale"] = function()
 	local duration = {
 		Product = {

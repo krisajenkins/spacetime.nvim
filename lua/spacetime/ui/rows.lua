@@ -35,10 +35,13 @@
 --    so re-opening a table is a table lookup, and `r` on the sidebar drops it
 --    through `state.cache_invalidate_db` along with the schema it belongs to.
 -- 5. **The whole view is one table, rebuilt on open and repainted from.** Sort
---    (task 28) and paging (task 29) change `view` and call `M.render()`; neither
---    needs to know anything about buffers. `view.limit` and `view.offset` are
---    already what `lib/sql.select_all` is given, so paging is an offset change
---    and a refetch rather than a new code path.
+--    and paging (task 29) change `view` and call `M.render()`; neither needs to
+--    know anything about buffers. `view.limit` and `view.offset` are already what
+--    `lib/sql.select_all` is given, so paging is an offset change and a refetch
+--    rather than a new code path. Sorting is smaller still: `view.order` says
+--    which data row is painted on which line, so a sort rebuilds *that* — the
+--    rows themselves are never touched, and `view.rank`, its inverse, is what
+--    puts the cursor back on the row it was on rather than the line it was on.
 
 local M = {}
 
@@ -71,18 +74,41 @@ local UNKNOWN_ERROR = "unknown error"
 ---@field entry? SpacetimeSchemaTable|SpacetimeSchemaView The schema entry, for primary keys.
 ---@field schema? SpacetimeSchema The database's schema, so a `Ref` in a column type resolves.
 
----The request plus everything the render needs. Tasks 28 and 29 mutate this and
----call `M.render()`.
+---Which column the grid is sorted by, and which way.
+---@class SpacetimeRowsSort
+---@field column integer 1-based index into `result.columns`.
+---@field descending boolean
+
+---The request plus everything the render needs. |spacetime.ui.rows.sort()| and
+---task 29 mutate this and call `M.render()`.
 ---@class SpacetimeRowsView : SpacetimeRowsRequest
 ---@field limit integer Rows asked for, i.e. `M.PAGE_SIZE`.
 ---@field offset integer Rows skipped. Always 0 until task 29.
 ---@field status "loading"|"ready"|"error"
 ---@field error? string Set when `status == "error"`.
 ---@field result? SpacetimeSqlResult Set when `status == "ready"`.
+---@field order integer[] Display position -> index into `result.rows`.
+---@field rank integer[] The inverse: index into `result.rows` -> display position.
+---@field sort? SpacetimeRowsSort Absent until the user sorts.
+---@field layout? SpacetimeGridLayout What was last painted, for mapping the cursor.
 
 ---What is on screen, or being fetched onto it. `nil` before the first open.
 ---@type SpacetimeRowsView|nil
 local view = nil
+
+---Point the display order back at the data order.
+---
+---Called wherever a result is *set*, cache or wire, so `order` and `rank` can
+---never describe a different set of rows from the one on screen.
+---@param current SpacetimeRowsView
+local function reset_order(current)
+	local sorting = require("spacetime.lib.sort")
+	local result = current.result
+	local rows = (type(result) == "table" and type(result.rows) == "table") and result.rows or {}
+	current.order = sorting.identity(#rows)
+	current.rank = sorting.rank(current.order)
+	current.sort = nil
+end
 
 --------------------------------------------------------------------------------
 -- Building the lines
@@ -139,6 +165,7 @@ end
 ---@param current SpacetimeRowsView
 ---@return string[] lines
 ---@return SpacetimeGridSpan[] spans
+---@return SpacetimeGridLayout|nil layout Absent unless a grid was laid out.
 local function build(current)
 	if current.status == "loading" then
 		return { LOADING }, {}
@@ -162,16 +189,24 @@ local function build(current)
 		return { NO_COLUMNS }, {}
 	end
 
+	-- The one place the sort is visible: rows are read through `order`, so a sort
+	-- is a different *reading* of the same data rather than a different copy of it.
+	local order = current.order
+	if type(order) ~= "table" or #order ~= #result.rows then
+		order = require("spacetime.lib.sort").identity(#result.rows)
+	end
+
 	local value = require("spacetime.lib.value")
 	local cells = {} ---@type SpacetimeGridCell[][]
-	for r, row in ipairs(result.rows) do
+	for position, index in ipairs(order) do
+		local row = result.rows[index]
 		-- A row whose length disagrees with the schema is a decode bug, and one
 		-- column out is worse than no grid: `lib/json.lua` keeps a JSON `null` as
 		-- `vim.NIL` precisely so the lengths line up. Said plainly here rather than
 		-- padded over, and caught by `M.render` so it reads as a line of text.
 		if type(row) ~= "table" or #row ~= #columns then
 			local count = type(row) == "table" and #row or 0
-			error(("row %d has %d values, expected %d"):format(r, count, #columns), 0)
+			error(("row %d has %d values, expected %d"):format(index, count, #columns), 0)
 		end
 
 		local out = {}
@@ -180,7 +215,7 @@ local function build(current)
 			-- column `c` of the row really is column `c` of the schema.
 			out[c] = value.cell(row[c], column.algebraic_type, current.schema)
 		end
-		cells[r] = out
+		cells[position] = out
 	end
 
 	local layout = require("spacetime.ui.grid").layout(columns, cells)
@@ -189,7 +224,7 @@ local function build(current)
 		-- The header alone reads as a rendering failure; say so instead.
 		lines[#lines + 1] = NO_ROWS
 	end
-	return lines, layout.spans
+	return lines, layout.spans, layout
 end
 
 --------------------------------------------------------------------------------
@@ -211,16 +246,22 @@ function M.render()
 	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
 		return
 	end
+	-- Idempotent, and cheap: a grid on screen always has its keys, including one
+	-- painted into a buffer the user had already opened by hand.
+	M.apply_keymaps(bufnr)
 
-	local lines, spans
-	local ok, built_lines, built_spans = pcall(build, current)
+	local lines, spans, layout
+	local ok, built_lines, built_spans, built_layout = pcall(build, current)
 	if ok then
-		lines, spans = built_lines, built_spans
+		lines, spans, layout = built_lines, built_spans, built_layout
 	else
 		-- Strip the "file:line: " a raise carries: the message is for a user, not
 		-- for whoever is reading this file.
 		lines, spans = error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
 	end
+	-- `nil` for `loading…`, an error, or an empty result: there is no grid to map
+	-- a cursor against, and `M.sort` says so by refusing to run.
+	current.layout = layout
 
 	-- The one write. Everything above assembles; nothing below adds a line.
 	buffer.set_lines(bufnr, lines)
@@ -232,6 +273,128 @@ function M.render()
 			end_col = span.end_col,
 			hl_group = span.hl_group,
 		})
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Sorting
+--------------------------------------------------------------------------------
+
+---The window showing the content buffer, and the buffer itself.
+---@return integer|nil winid `nil` when the buffer exists but nothing is showing it.
+---@return integer|nil bufnr
+local function content_window()
+	local buffer = require("spacetime.ui.buffer")
+	local bufnr = buffer.find(buffer.CONTENT_NAME)
+	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+		return nil, nil
+	end
+	return buffer.window_showing(bufnr), bufnr
+end
+
+---Sort the grid by the column under the cursor; press again to reverse it.
+---
+---What `s` in the content window does. Only the `order`/`rank` mapping is
+---rebuilt — `result.rows` is never touched — and the comparator works on the
+---**raw** values through `lib/sort`, not on the display strings: `9` sorts
+---before `10`, and a Timestamp column sorts by micros rather than by the text it
+---renders as. NULLs sort last whichever way round the column is.
+---
+---The cursor follows the row it was on, not the line it was on: the data index
+---under it is read from `order` before the sort and looked back up in `rank`
+---after it, and it stays in the column it was in.
+---
+---A no-op unless a grid is actually on screen.
+function M.sort()
+	local current = view
+	if current == nil or current.status ~= "ready" then
+		return
+	end
+	-- No layout means no grid: `loading…`, an error, or a result with no columns.
+	local layout = current.layout
+	local result = current.result
+	if layout == nil or type(result) ~= "table" or #result.columns == 0 then
+		return
+	end
+
+	local winid, bufnr = content_window()
+	if winid == nil or bufnr == nil then
+		return
+	end
+
+	local cursor = vim.api.nvim_win_get_cursor(winid)
+	local line = vim.api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
+	local column = require("spacetime.ui.grid").column_at(line, cursor[2], layout.widths)
+	-- The data row under the cursor, read *before* the mapping changes under it.
+	-- `nil` on the header and on the `(no rows)` marker, neither of which moves.
+	local anchor = current.order[cursor[1] - layout.first_data_line + 1]
+
+	-- Same column again reverses; a different column starts ascending, which is
+	-- the direction a column the user has just picked is asked for.
+	local descending = current.sort ~= nil and current.sort.column == column and not current.sort.descending
+	current.sort = { column = column, descending = descending }
+
+	local sorting = require("spacetime.lib.sort")
+	local schema_column = result.columns[column]
+	current.order = sorting.order(result.rows, column, {
+		algebraic_type = type(schema_column) == "table" and schema_column.algebraic_type or nil,
+		types = current.schema,
+		descending = descending,
+	})
+	current.rank = sorting.rank(current.order)
+
+	M.render()
+
+	local painted = current.layout or layout
+	local position = anchor ~= nil and current.rank[anchor] or nil
+	if position == nil then
+		return
+	end
+	local range = painted.ranges[position] and painted.ranges[position][column]
+	-- `pcall`: a window the user closed between the two halves of this function
+	-- is not an error worth reporting, and the sort itself has already landed.
+	pcall(vim.api.nvim_win_set_cursor, winid, {
+		painted.first_data_line + position - 1,
+		range and range.start_col or 0,
+	})
+end
+
+--------------------------------------------------------------------------------
+-- Keymaps
+--------------------------------------------------------------------------------
+
+---@class SpacetimeRowsKeymap
+---@field keys string[]
+---@field desc string
+---@field action fun()
+
+---Every key the content window binds while it is showing a grid. One table, as
+---in `ui/sidebar.lua`, so the mappings and the documentation cannot drift apart.
+---@type SpacetimeRowsKeymap[]
+M.KEYMAPS = {
+	{
+		keys = { "s" },
+		desc = "sort by the column under the cursor (again to reverse)",
+		action = function()
+			M.sort()
+		end,
+	},
+}
+
+---Bind every content-window key, buffer-locally.
+---
+---Re-applied on every render: `vim.keymap.set` overwrites, so this is idempotent.
+---@param bufnr integer The content buffer.
+function M.apply_keymaps(bufnr)
+	for _, map in ipairs(M.KEYMAPS) do
+		for _, lhs in ipairs(map.keys) do
+			vim.keymap.set("n", lhs, map.action, {
+				buffer = bufnr,
+				nowait = true,
+				silent = true,
+				desc = "spacetime: " .. map.desc,
+			})
+		end
 	end
 end
 
@@ -278,6 +441,7 @@ local function fetch(current)
 		elseif result then
 			current.status = "ready"
 			current.result = result
+			reset_order(current)
 			state.cache_set(key, result)
 		else
 			current.status = "error"
@@ -328,12 +492,17 @@ function M.open(request)
 		limit = M.PAGE_SIZE,
 		offset = 0,
 		status = "loading",
+		order = {},
+		rank = {},
 	}
 
 	local cached = state.cache_get(key)
 	if type(cached) == "table" then
 		view.status = "ready"
 		view.result = cached
+		-- A cached result is a *new* view of it: re-opening a table you had sorted
+		-- shows it in data order again, which is what "open this table" means.
+		reset_order(view)
 		M.render()
 		return
 	end

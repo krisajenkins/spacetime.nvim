@@ -18,6 +18,7 @@ spacetime-completion	spacetime.txt	/*spacetime-completion*
 spacetime-completion-cache	spacetime.txt	/*spacetime-completion-cache*
 spacetime-configuration	spacetime.txt	/*spacetime-configuration*
 spacetime-contents	spacetime.txt	/*spacetime-contents*
+spacetime-grid-keymaps	spacetime.txt	/*spacetime-grid-keymaps*
 spacetime-health	spacetime.txt	/*spacetime-health*
 spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*
@@ -32,6 +33,7 @@ spacetime-sidebar-expanding	spacetime.txt	/*spacetime-sidebar-expanding*
 spacetime-sidebar-keymaps	spacetime.txt	/*spacetime-sidebar-keymaps*
 spacetime-sidebar-paused	spacetime.txt	/*spacetime-sidebar-paused*
 spacetime-sidebar-rows	spacetime.txt	/*spacetime-sidebar-rows*
+spacetime-sidebar-sort	spacetime.txt	/*spacetime-sidebar-sort*
 spacetime.config	spacetime.txt	/*spacetime.config*
 spacetime.setup()	spacetime.txt	/*spacetime.setup()*
 spacetime.txt	spacetime.txt	/*spacetime.txt*

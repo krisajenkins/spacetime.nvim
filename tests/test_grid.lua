@@ -251,6 +251,53 @@ T["header spans distinguish primary keys, and every group is a real one"] = func
 	expect.equality(has_trailing_space(layout.lines), false)
 end
 
+T["column_at finds the column under a byte offset, on any line"] = function()
+	local columns, cells = fixture_columns(), fixture_cells()
+	local layout = grid.layout(columns, cells, { max_width = 60 })
+
+	-- Every byte of every cell — header included — maps back to the column that
+	-- cell belongs to. This is the round trip `s` in the grid depends on.
+	for c = 1, #columns do
+		for r = 1, #cells do
+			local line = layout.lines[layout.first_data_line + r - 1]
+			local range = layout.ranges[r][c]
+			for col = range.start_col, math.max(range.start_col, range.end_col - 1) do
+				expect.equality(grid.column_at(line, col, layout.widths), c)
+			end
+		end
+	end
+
+	-- The £ row and the 🎟 row put their third column at *different* byte offsets
+	-- and the same display column, which is exactly why the mapping is done in
+	-- display columns: both answer 3.
+	expect.equality(layout.ranges[1][3].start_col ~= layout.ranges[2][3].start_col, true)
+	expect.equality(grid.column_at(layout.lines[2], layout.ranges[1][3].start_col, layout.widths), 3)
+	expect.equality(grid.column_at(layout.lines[3], layout.ranges[2][3].start_col, layout.widths), 3)
+
+	-- The header line, whose byte offsets are its own.
+	expect.equality(grid.column_at(layout.lines[1], 0, layout.widths), 1)
+	expect.equality(grid.column_at(layout.lines[1], #layout.lines[1] - 1, layout.widths), #columns)
+end
+
+T["column_at is total: padding, separators and past the end all land somewhere"] = function()
+	local widths = { 3, 3 }
+	local line = "a    bb" -- "a" padded to 3, a two-space separator, then "bb"
+
+	expect.equality(grid.column_at(line, 0, widths), 1)
+	-- In the padding after the first cell, and in the separator: still column 1,
+	-- because a column owns the gap that follows it.
+	expect.equality(grid.column_at(line, 2, widths), 1)
+	expect.equality(grid.column_at(line, 4, widths), 1)
+	expect.equality(grid.column_at(line, 5, widths), 2)
+	-- One past the last byte, where Neovim lets the cursor sit.
+	expect.equality(grid.column_at(line, #line, widths), 2)
+	-- And a cursor way beyond a short line still names a real column.
+	expect.equality(grid.column_at("", 0, widths), 1)
+	expect.equality(grid.column_at(line, 99, widths), 2)
+	expect.equality(grid.column_at(line, 0, {}), 1)
+	expect.equality(grid.column_at(line, 0, { 3, 3 }, { separator = " | " }), 1)
+end
+
 T["degenerate inputs lay out without erroring"] = function()
 	local empty = grid.layout({}, { { "ignored" } })
 	expect.equality(empty.lines, {})
