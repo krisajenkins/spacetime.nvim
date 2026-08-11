@@ -2,6 +2,8 @@
 
 A [SpacetimeDB](https://spacetimedb.com) browser inside Neovim.
 
+![The sidebar and a table's rows](screenshot.png)
+
 `:Spacetime` opens a two-window layout: a sidebar listing the databases your
 identity owns, and a content window beside it. Expand a database to see its
 tables, views and `st_*` system tables; press `<CR>` on one to browse its rows
