@@ -104,6 +104,9 @@ lua/spacetime/ui/              buffers, windows, keymaps
   tree.lua                     the sidebar tree rendered as data
 plugin/spacetime.lua           load-time wiring: highlight groups and commands
 scripts/minimal_init.lua       headless init used by the test runner
+scripts/record-demo.tape       the README demo as a VHS tape (`make demo`)
+scripts/record-demo-setup.sh   its environment prep: demo cli.toml, init, terminfo
+scripts/molokai.tape           the terminal palette, Source-d by the tape
 tests/                         mini.test suites; helpers/ holds the shared harness
 tests/fixtures/                real responses captured from a live server
 doc/spacetime.txt              vimdoc; doc/tags is generated and tracked
@@ -137,6 +140,17 @@ each other and with the code. After editing `doc/`, regenerate the tags file
 ```bash
 make helptags
 ```
+
+`demo.gif` at the top of `README.md` is recorded, not captured: `make demo`
+replays `scripts/record-demo.tape` through VHS. It is **not** hermetic — it
+browses the `medium-epic-events` database on a SpacetimeDB at
+`127.0.0.1:3000`, and `scripts/record-demo-setup.sh` stops with a clear message
+if either is missing rather than recording a screenful of error text. Everything
+else it needs (a demo `cli.toml`, a cosmetic `init.lua`, isolated XDG dirs, and
+the semicolon-truecolor terminfo VHS's terminal needs to render molokai
+correctly) it builds in a temp dir, so no real config is read or written. The
+tape's `j`-motion counts encode where `medium-epic-events` and `item_template`
+sit in the sidebar — change the demo database and re-count them.
 
 ## Testing with MiniTest
 

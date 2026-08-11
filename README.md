@@ -2,7 +2,7 @@
 
 A [SpacetimeDB](https://spacetimedb.com) browser inside Neovim.
 
-![The sidebar and a table's rows](screenshot.png)
+![Connecting to a local server, browsing a table, sorting it, then its schema and the module's reducers](demo.gif)
 
 `:Spacetime` opens a two-window layout: a sidebar listing the databases your
 identity owns, and a content window beside it. Expand a database to see its
@@ -216,6 +216,8 @@ from came from a `host`/`port` rather than a nickname you could retype.
 server that appears in none of your files.
 
 ### `:SpacetimeRows` — the grid
+
+![The sidebar and a table's rows](screenshot.png)
 
 The badge on line one says how many rows are on screen, how far into the table
 they start, and how long the server said the query took:

@@ -40,6 +40,13 @@ lua-ls:
 	@echo "Type-checking with lua-language-server..."
 	@lua-language-server --check=lua --checklevel=Warning --configpath=$(CURDIR)/.luarc.json
 
+# Record the README demo into demo.gif (tracked in git).
+#
+# Needs a SpacetimeDB on 127.0.0.1:3000 serving `medium-epic-events`;
+# scripts/record-demo-setup.sh checks for both and stops if either is missing.
+demo:
+	vhs scripts/record-demo.tape
+
 # Regenerate the vimdoc help tags after editing doc/*.txt. doc/tags is tracked.
 helptags:
 	nvim --headless -c "helptags doc/" -c "quit"
@@ -49,4 +56,4 @@ deps/mini.nvim:
 	@mkdir -p deps
 	git clone --filter=blob:none https://github.com/echasnovski/mini.nvim $@
 
-.PHONY: all test test_file format check-format typecheck luacheck lua-ls helptags
+.PHONY: all test test_file format check-format typecheck luacheck lua-ls demo helptags

@@ -27,6 +27,8 @@
             neovim
             spacetimedb
             curl
+            vhs # records scripts/record-demo.tape into demo.gif
+            ncurses # tic, for the demo's semicolon-truecolor terminfo
           ];
 
           shellHook = ''
@@ -38,6 +40,7 @@
             echo "  - neovim (testing)"
             echo "  - spacetime (SpacetimeDB CLI)"
             echo "  - curl (HTTP transport)"
+            echo "  - vhs (demo recording: make demo)"
             echo ""
             echo "Run 'make' to run all checks and tests"
           '';
