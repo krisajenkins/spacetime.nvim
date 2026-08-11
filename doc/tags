@@ -55,6 +55,7 @@ spacetime-opt-side	spacetime.txt	/*spacetime-opt-side*
 spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-project-files	spacetime.txt	/*spacetime-project-files*
 spacetime-quickstart	spacetime.txt	/*spacetime-quickstart*
+spacetime-reducers-names	spacetime.txt	/*spacetime-reducers-names*
 spacetime-reducers-private	spacetime.txt	/*spacetime-reducers-private*
 spacetime-reducers-view	spacetime.txt	/*spacetime-reducers-view*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*

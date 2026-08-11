@@ -289,14 +289,15 @@ spacegym
 19 reducers · schema v10
 
 Reducers
-  ClientCallable  book(instanceId: U64) -> ok {} / err String
-  Private         onConnect (on_connect)() -> ok {} / err String
+  ClientCallable  book(instanceId: U64) -> ok {} | err String
+  Private         on_connect() -> ok {} | err String
 ```
 
 Each reducer is listed with its parameter names and types and, where the server
-sends them, the `ok` and `err` types it returns. Both spellings of a name are
-shown where they differ — `onConnect (on_connect)` — exactly as in the schema
-view.
+sends them, the `ok` and `err` types it returns. A signature reads as the call
+you would make, so — unlike the schema view — it names its reducer *canonically*
+and once: `on_connect`, not `onConnect (on_connect)`. The schema view is where
+both spellings of a name are shown.
 
 A reducer is marked `ClientCallable` or `Private` as the server reports it, and
 a `Private` one is greyed out rather than hidden: it is part of the module, it

@@ -615,8 +615,9 @@ Where a name was written one way in the module and is spelled another way in
 SQL, both are shown: `ledgerEntry (ledger_entry)`, `onConnect (on_connect)`.
 The SQL endpoint accepts either spelling, so showing the one you wrote is a
 convenience rather than a trap. Where the two agree, only one name is printed.
-The rule is one function, shared by this view and the reducers view, so the
-two cannot disagree about what a dual name looks like.
+This view is the one place both spellings appear: a reducer signature names its
+reducer canonically instead (|spacetime-reducers-names|), because a signature
+reads as a call rather than as a label.
 
 Nothing in this view is truncated, and the only keys it binds are the shared
 `q` and `<Tab>` (|spacetime-keys-shared|).
@@ -629,16 +630,22 @@ THE REDUCERS VIEW                                    *spacetime-reducers-view*
     19 reducers · schema v10
 
     Reducers
-      ClientCallable  book(instanceId: U64) -> ok {} / err String
-      Private         onConnect (on_connect)() -> ok {} / err String
+      ClientCallable  book(instanceId: U64) -> ok {} | err String
+      Private         on_connect() -> ok {} | err String
 <
 The title is the database, because that is what a reducer belongs to; the line
 under it says how many there are and which schema version the server answered
 with. Each reducer is listed with its parameter names and types and, where the
 server sends them, the `ok` and `err` types it returns — a return clause is
 omitted entirely rather than invented when the schema carried neither type.
-Both spellings of a name are shown where they differ, exactly as in the schema
-view (|spacetime-schema-names|).
+
+                                                    *spacetime-reducers-names*
+A signature reads as the call you would make, so it names its reducer
+CANONICALLY and once — `on_connect`, not the `onConnect (on_connect)` pair the
+schema view renders (|spacetime-schema-names|). The canonical spelling is the
+stable one: it is what the module's case-conversion policy produced, and what
+SQL and the reducer endpoints join on. Go to the schema view for the name as
+the module author wrote it.
 
 A module with no reducers says "(none)" rather than rendering an empty buffer.
 

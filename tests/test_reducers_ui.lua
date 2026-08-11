@@ -188,10 +188,13 @@ T["the reducers of a named database render with signatures and visibility"] = fu
 
 	-- The parameter list is typed through `lib/value.label`, and the return types
 	-- are the `ok`/`err` pair only v10 carries.
-	expect.equality(line_with(reducers, "book("), "  ClientCallable  book(instanceId: U64) -> ok {} / err String")
+	expect.equality(line_with(reducers, "book("), "  ClientCallable  book(instanceId: U64) -> ok {} | err String")
 
-	-- Both spellings, where the module and SQL disagree about a name.
-	expect.equality(line_with(reducers, "onConnect"):find("onConnect (on_connect)()", 1, true) ~= nil, true)
+	-- The canonical spelling alone, where the module and SQL disagree about a name:
+	-- a signature reads as a call, so the `name (canonical)` pair the schema view
+	-- renders would sit exactly where the argument list belongs.
+	expect.equality(line_with(reducers, "on_connect"):find("on_connect()", 1, true) ~= nil, true)
+	expect.equality(line_with(reducers, "onConnect"), nil)
 
 	-- The title is a header, and nothing here is an error.
 	expect.equality(content_marks()[1][3], "SpacetimeHeader")
@@ -213,7 +216,7 @@ T["a Private reducer is listed and greyed out rather than hidden"] = function()
 		return line:find("Private", 1, true) ~= nil
 	end, reducers)
 	expect.equality(#private, 5)
-	expect.equality(line_with(reducers, "onConnect"):match("^%s+(%a+)%s+(.*)$"), "Private")
+	expect.equality(line_with(reducers, "on_connect"):match("^%s+(%a+)%s+(.*)$"), "Private")
 
 	local greyed = vim.tbl_filter(function(mark)
 		return mark[3] == "SpacetimeNull"

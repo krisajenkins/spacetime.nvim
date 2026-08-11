@@ -19,6 +19,15 @@
 --    is simply not yours to call. `is_private` is what tells the view to grey
 --    the row out — see ROADMAP.md, "Deferred past v1", where `:SpacetimeCall`
 --    offers the callable ones and needs the rest to still be visible.
+-- 3. **A signature names its reducer canonically, and once.** Everywhere else a
+--    dual-spelled name is rendered as the pair `onConnect (on_connect)`, through
+--    `lib/schema.display_name`. A signature is not a label, though: it reads as
+--    the call you would make, and a parenthesised alias sitting where the
+--    argument list belongs reads as one. The canonical name is the one that
+--    spelling is stable under — it is what the module's own case-conversion
+--    policy produced, what SQL joins on, and what `:SpacetimeCall` will send —
+--    so it is the one spelling here. Nothing is lost: the schema view still
+--    shows both.
 --
 -- The return clause of a signature is omitted entirely when the schema carried
 -- neither type, which is every v9 reducer: an invented `-> ok ?` would be a
@@ -29,7 +38,7 @@ local M = {}
 ---One reducer, as a view lays it out.
 ---@class SpacetimeReducerRow
 ---@field access string The visibility as the server spelt it; `""` when unknown.
----@field signature string `book (book)(instanceId: U64) -> ok {} / err String`.
+---@field signature string `on_connect(instanceId: U64) -> ok {} | err String`.
 ---@field is_private boolean Grey this row out. Never true for an unknown visibility.
 
 ---Every reducer of a module, in the order the schema holds them.
@@ -37,7 +46,10 @@ local M = {}
 ---@field show_access boolean Did the server tell us any visibility at all?
 ---@field rows SpacetimeReducerRow[]
 
----One reducer's signature, both spellings of its name included.
+---One reducer's signature, under its canonical name.
+---
+---The canonical spelling alone, not the `name (canonical)` pair
+---`lib/schema.display_name` renders — see point 3 of the module header.
 ---@param reducer SpacetimeSchemaReducer
 ---@param schema SpacetimeSchema
 ---@return string
@@ -50,10 +62,14 @@ function M.signature(reducer, schema)
 		params[i] = param.name and (param.name .. ": " .. label) or label
 	end
 
-	local out = require("spacetime.lib.schema").display_name(reducer.name, reducer.canonical)
-		.. "("
-		.. table.concat(params, ", ")
-		.. ")"
+	-- Both schema versions set `canonical`; the fallback is for the half-built
+	-- models `M.list` below already tolerates, where a name is better than none.
+	local name = reducer.canonical
+	if type(name) ~= "string" or name == "" then
+		name = type(reducer.name) == "string" and reducer.name or ""
+	end
+
+	local out = name .. "(" .. table.concat(params, ", ") .. ")"
 
 	local returns = {}
 	if reducer.ok_return_type ~= nil then
@@ -63,7 +79,7 @@ function M.signature(reducer, schema)
 		returns[#returns + 1] = "err " .. value.label(reducer.err_return_type, schema)
 	end
 	if #returns > 0 then
-		out = out .. " -> " .. table.concat(returns, " / ")
+		out = out .. " -> " .. table.concat(returns, " | ")
 	end
 	return out
 end
