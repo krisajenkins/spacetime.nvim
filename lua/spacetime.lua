@@ -12,7 +12,7 @@ local logger = require("spacetime.logger")
 ---@field side? "left"|"right" Which side `:Spacetime` opens its sidebar on (default `"left"`)
 ---@field width? integer|string Sidebar width in columns, or a percentage such as `"20%"` (default `30`)
 ---@field log_lines? integer Log backlog `:SpacetimeLogs` asks for (default `200`)
----@field icons? "emoji"|"ascii"|"none" Public/private icons in the sidebar (default `"emoji"`)
+---@field icons? "emoji"|"ascii"|"none" Kind and access icons in the sidebar (default `"emoji"`)
 
 local M = {}
 

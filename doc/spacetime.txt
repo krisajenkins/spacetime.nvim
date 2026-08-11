@@ -122,7 +122,8 @@ The sidebar then lists the databases belonging to your identity. From there:
 
     <CR>    on a database expands it, fetching its schema once, and lists its
             tables, then its views, then SpacetimeDB's `st_*` system tables,
-            each prefixed with its access icon (|spacetime-sidebar-glyphs|).
+            each prefixed with a kind icon and an access icon
+            (|spacetime-sidebar-glyphs|).
     <CR>    on a table or view runs `SELECT * FROM "tbl" LIMIT 100` and
             renders the answer in the content window as a grid.
     s       on a table or view shows its schema there instead; `R` lists the
@@ -145,23 +146,28 @@ width. The database list and each database's schema are cached for the
 session; `r` in the sidebar drops the cache and fetches again.
 
                                                     *spacetime-sidebar-glyphs*
-Four glyphs carry the whole of the sidebar's status:
+Every table and view is prefixed with two glyphs — what it is, then who can
+read it:
 
     ▸ ▾     a database, collapsed or expanded
-    🔒      a private table or view — not readable by a connected client
-    🌎      a public table or view — any client may subscribe to it
+    📋      a table
+    👓      a view
+    🔧      one of SpacetimeDB's own `st_*` system tables
+    🔒      private — not readable by a connected client
+    🌎      public — any client may subscribe to it
     ⏸       a paused database
 
-A table's icon comes from its `table_access` and a view's from its `is_public`;
-system tables are marked the same way as any other table. Set
-|spacetime-opt-icons| to `"ascii"` for `+` (public) and `-` (private) instead,
-or to `"none"` for no icon column at all, on a terminal with no emoji font.
+So `📋🔒 booking` is a private table and `👓🌎 meView` a public view. A table's
+access comes from its `table_access` and a view's from its `is_public`; system
+tables are marked the same way as any other table. Set |spacetime-opt-icons| to
+`"ascii"` for `t`/`v`/`s` and `+`/`-` instead, or to `"none"` for no icon
+columns at all, on a terminal with no emoji font.
 
-Both emoji are "wide" by Unicode, so a terminal that draws them narrow draws
-both narrow: the names stay in one column and only that column's position
-moves. 'ambiwidth' and the terminal's own width tables decide the rest, and the
-plugin does not try to correct for them — every offset it computes is a byte
-count, so nothing but the appearance is affected.
+Every emoji here is "wide" by Unicode, so a terminal that draws them narrow
+draws all of them narrow: the names stay in one column and only that column's
+position moves. 'ambiwidth' and the terminal's own width tables decide the
+rest, and the plugin does not try to correct for them — every offset it
+computes is a byte count, so nothing but the appearance is affected.
 
                                                     *spacetime-sidebar-paused*
 A paused database answers 503 on every endpoint, so it is marked with a pause
@@ -913,11 +919,11 @@ log_lines ~
 icons ~
     Type: `string`, default: `"emoji"`
 
-    How the sidebar marks a table or a view as public or private:
+    How the sidebar marks what an entry is and who can read it:
 
-        "emoji"     🌎 and 🔒 (the default)
-        "ascii"     `+` and `-`, for a terminal with no emoji font
-        "none"      no icon column at all
+        "emoji"     📋 👓 🔧 and 🌎 🔒 (the default)
+        "ascii"     `t` `v` `s` and `+` `-`, for a terminal with no emoji font
+        "none"      no icon columns at all
 
     Anything else is rejected by |spacetime.setup()|. The setting is read on
     every render, so changing it and refreshing with `r` is enough to see it —

@@ -20,9 +20,9 @@
 --    reason `grid.sanitise` exists.
 -- 2. **Spans are 0-based byte offsets**, ready for `nvim_buf_set_extmark`
 --    without conversion. The marker column is a 3-byte arrow plus a space, and
---    the access icon a 4-byte emoji plus a space, so a character-based offset
+--    the icon column two 4-byte emoji plus a space, so a character-based offset
 --    would put every database name four columns left of where it is and every
---    table name seven.
+--    table name eleven.
 -- 3. **The module holds no state.** Expansion is passed in per database as
 --    `expanded`, and the caller supplies the database order. Two calls with the
 --    same model produce the same render.
@@ -84,23 +84,32 @@ M.MARKERS = {
 ---`"▸ "` marker column, so labels line up under the database name.
 M.INDENT = "    "
 
----The access icons, keyed by the mode `model.icons` names. Every table and view
----is prefixed with one, so "can anyone read this?" is answerable at a glance
----rather than by opening the schema view.
+---The icons, keyed by the mode `model.icons` names. Every table and view is
+---prefixed with two of them — `kind` then `access` — so "is this a view?" and
+---"can anyone read this?" are both answerable at a glance rather than by opening
+---the schema view. They are kept as two glyphs rather than folded into one
+---per-combination glyph so that each column carries exactly one meaning and can
+---be learned on its own.
 ---
----`emoji` is the default, and the pair is chosen to be one width class: both
----glyphs are four bytes and both are `Emoji_Presentation` (East Asian Wide), so
----a terminal that draws emoji narrow draws *both* narrow and the label column
----shifts as a whole rather than going ragged. That is the whole of the
----mitigation — `strdisplaywidth` for emoji depends on `'ambiwidth'` and on the
----terminal's own tables, which ROADMAP.md's risk list says to document rather
+---`emoji` is the default, and every glyph in it is chosen to be one width class:
+---all five are four bytes and all five are `Emoji_Presentation` (East Asian
+---Wide), so a terminal that draws emoji narrow draws *all* of them narrow and
+---the label column shifts as a whole rather than going ragged. That is the whole
+---of the mitigation — `strdisplaywidth` for emoji depends on `'ambiwidth'` and on
+---the terminal's own tables, which ROADMAP.md's risk list says to document rather
 ---than chase. `ascii` is the bare-TTY fallback (one byte, one column, same
 ---property) and `none` renders no icon column at all.
----@type table<string, table<string, string>>
+---@type table<string, { kind: table<string, string>, access: table<string, string> }>
 M.ICONS = {
-	emoji = { public = "🌎", private = "🔒" },
-	ascii = { public = "+", private = "-" },
-	none = {},
+	emoji = {
+		kind = { table = "📋", view = "👓", system_table = "🔧" },
+		access = { public = "🌎", private = "🔒" },
+	},
+	ascii = {
+		kind = { table = "t", view = "v", system_table = "s" },
+		access = { public = "+", private = "-" },
+	},
+	none = { kind = {}, access = {} },
 }
 
 ---The `M.ICONS` set used when the model names none.
@@ -258,11 +267,14 @@ function M.build_lines(model)
 			-- Display the source spelling the developer wrote; carry the canonical
 			-- name on the node, because that is what the SQL layer queries.
 			local label = one_line(entry.name, one_line(entry.canonical, ""))
-			-- The icon is decoration, not part of the name: it is prefixed onto the
-			-- line but kept out of `label` and out of the highlighted span, so `y`
-			-- still yanks something you can paste into SQL.
-			local icon = icons[is_public(item.kind, entry) and "public" or "private"]
-			local indent = icon ~= nil and (M.INDENT .. icon .. " ") or M.INDENT
+			-- The icons are decoration, not part of the name: they are prefixed onto
+			-- the line but kept out of `label` and out of the highlighted span, so `y`
+			-- still yanks something you can paste into SQL. `none` supplies neither,
+			-- and the pair is emitted together or not at all, so the label column can
+			-- never end up half-indented.
+			local access = is_public(item.kind, entry) and "public" or "private"
+			local prefix = (icons.kind[item.kind] or "") .. (icons.access[access] or "")
+			local indent = prefix ~= "" and (M.INDENT .. prefix .. " ") or M.INDENT
 			local index = emit(indent .. label, {
 				kind = item.kind,
 				label = label,

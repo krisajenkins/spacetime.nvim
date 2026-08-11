@@ -85,7 +85,8 @@ The sidebar then lists the databases belonging to your identity. From there:
 
 - `<CR>` on a database expands it, fetching its schema once, and lists its
   tables, then its views, then SpacetimeDB's own `st_*` system tables. Each one
-  is prefixed 🔒 or 🌎 for private or public.
+  is prefixed with what it is (📋 table, 👓 view, 🔧 system table) and then with
+  🔒 or 🌎 for private or public.
 - `<CR>` on a table or view runs `SELECT * FROM "table" LIMIT 100` and renders
   the answer in the content window as a grid.
 - `s` on a table or view shows its schema there instead; `R` lists the reducers
@@ -106,22 +107,26 @@ a second one, and a sidebar you have resized by hand keeps your width. The
 database list and each database's schema are cached for the session; `r` in the
 sidebar drops the cache and fetches again.
 
-Four glyphs carry the whole of the sidebar's status:
+Each table and view is prefixed with two glyphs — what it is, then who can read
+it:
 
 | Glyph   | Means                                                        |
 | ------- | ------------------------------------------------------------ |
 | `▸` `▾` | A database, collapsed or expanded                            |
-| 🔒      | A private table or view — not readable by a connected client |
-| 🌎      | A public table or view — any client may subscribe to it      |
+| 📋      | A table                                                      |
+| 👓      | A view                                                       |
+| 🔧      | One of SpacetimeDB's own `st_*` system tables                |
+| 🔒      | Private — not readable by a connected client                 |
+| 🌎      | Public — any client may subscribe to it                      |
 | `⏸`     | A paused database                                            |
 
-A table's icon comes from its `table_access`, a view's from `is_public`, and
-system tables are marked the same way as any other. Set
-[`icons`](#configuration) to `"ascii"` for `+` (public) and `-` (private)
-instead, or to `"none"` for no icon column at all, on a terminal with no emoji
-font. Both emoji are "wide" by Unicode, so a terminal that draws them narrow
-draws both narrow and the names stay in one column; only the column's position
-moves.
+So `📋🔒 booking` is a private table and `👓🌎 meView` a public view. A table's
+access comes from its `table_access`, a view's from `is_public`, and system
+tables are marked the same way as any other. Set [`icons`](#configuration) to
+`"ascii"` for `t`/`v`/`s` and `+`/`-` instead, or to `"none"` for no icon
+columns at all, on a terminal with no emoji font. Every emoji here is "wide" by
+Unicode, so a terminal that draws them narrow draws all of them narrow and the
+names stay in one column; only the column's position moves.
 
 A paused database answers 503 on every endpoint, so it is marked `⏸` and asked
 exactly once. Press `r` on it once it has woken up.
@@ -546,11 +551,12 @@ require("spacetime").setup({
 - **`log_lines`** — how much log backlog `:SpacetimeLogs` asks the server for
   (`200` by default). Any whole number of lines, zero or more; a fraction, a
   negative or a string is rejected at `setup()` time.
-- **`icons`** — how the sidebar marks a table or view as public or private:
-  `"emoji"` (the default) uses 🌎 and 🔒, `"ascii"` uses `+` and `-` for a
-  terminal with no emoji font, and `"none"` drops the column entirely. Anything
-  else is rejected at `setup()` time. The setting is read on every render, so
-  changing it and refreshing with `r` is enough to see it.
+- **`icons`** — how the sidebar marks what an entry is and who can read it:
+  `"emoji"` (the default) uses 📋 👓 🔧 and 🌎 🔒, `"ascii"` uses `t` `v` `s`
+  and `+` `-` for a terminal with no emoji font, and `"none"` drops both
+  columns entirely. Anything else is rejected at `setup()` time. The setting is
+  read on every render, so changing it and refreshing with `r` is enough to see
+  it.
 
 `setup()` also accepts the connection fields `host`, `port`, `tls`, `server`,
 `database` and `token`. They sit at the top of the precedence chain below, and
