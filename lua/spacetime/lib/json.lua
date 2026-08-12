@@ -167,4 +167,29 @@ function M.decode(text)
 	return vim.json.decode(M.quote_big_integers(text))
 end
 
+---A decoded value as an integer, accepting either spelling `M.decode` may have
+---produced: a Lua number, or the exact decimal string a run of 16 or more
+---digits comes back as.
+---
+---Anything else — absent, `vim.NIL`, a non-numeric string, a float dressed as
+---text — is `nil`, which the caller reports in its own terms rather than
+---guessing at.
+---
+---It lives here, rather than in either of the two modules that need it, because
+---the choice is this module's doing: the pre-pass above is the reason an integer
+---field can arrive as a string at all, so the coercion that undoes it belongs
+---beside the rule that creates it.
+---@param value any
+---@return integer|nil
+function M.to_integer(value)
+	if type(value) == "number" then
+		return math.floor(value)
+	end
+	if type(value) == "string" and value:match("^%-?%d+$") then
+		local n = tonumber(value)
+		return n and math.floor(n) or nil
+	end
+	return nil
+end
+
 return M

@@ -68,10 +68,11 @@ local LOADING = "loading…"
 ---@field table_name string Either spelling — `ledgerEntry` or `ledger_entry` both find it.
 
 ---The request plus what has become of it.
----@class SpacetimeSchemaDisplay : SpacetimeSchemaRequest
----@field status "loading"|"ready"|"error"
----@field error? string Set when `status == "error"`.
----@field schema? SpacetimeSchema Set when `status == "ready"`.
+---
+---`status`, `error` and `schema` come from `SpacetimeDetailDisplay`, which is
+---what `ui/detail.fetch_schema` fills in — the same three fields the reducers
+---view gets back from the same request.
+---@class SpacetimeSchemaDisplay : SpacetimeSchemaRequest, SpacetimeDetailDisplay
 
 ---What is on screen, or being fetched onto it. `nil` before the first open.
 ---@type SpacetimeSchemaDisplay|nil
@@ -269,11 +270,8 @@ function M.render()
 	end
 
 	local buffer = require("spacetime.ui.buffer")
-	if not buffer.owns_content(M.OWNER) then
-		return
-	end
-	local bufnr = buffer.find(buffer.CONTENT_NAME)
-	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+	local bufnr = buffer.content_target(M.OWNER)
+	if not bufnr then
 		return
 	end
 	-- Applying this view's one-key map is how the row grid's keys come off the
@@ -291,16 +289,7 @@ function M.render()
 	end
 
 	-- The one write. Everything above assembles; nothing below adds a line.
-	buffer.set_lines(bufnr, lines)
-
-	local namespace = buffer.namespace()
-	vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-	for _, span in ipairs(spans) do
-		vim.api.nvim_buf_set_extmark(bufnr, namespace, span.line, span.start_col, {
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
+	buffer.paint(bufnr, lines, spans)
 end
 
 --------------------------------------------------------------------------------
@@ -309,57 +298,16 @@ end
 
 ---Fetch the database's schema and repaint when it lands.
 ---
----The same key and the same cache the sidebar's own schema fetch uses, so
----expanding a database in the sidebar and running `:SpacetimeSchema` on one of
----its tables costs one request between them, whichever order they happen in.
----
----The handle is registered with `state.start` *before* the request goes out: a
----stubbed transport completes inside the call, and a callback that ran before
----`start` returned would have no token to present.
+---`ui/detail.lua` owns the request itself, because the reducers view wants
+---exactly the same one: the same key and the same cache the sidebar's own fetch
+---uses, so expanding a database in the sidebar and running `:SpacetimeSchema` on
+---one of its tables costs one request between them, whichever order they happen
+---in.
 ---@param current SpacetimeSchemaDisplay
 local function fetch(current)
-	local state = require("spacetime.state")
-	local key = state.key("schema", current.database)
-	local client = require("spacetime.lib.client").new(current.connection)
-
-	local handle = nil ---@type SpacetimeHttpHandle|nil
-	local seq = state.start(key, {
-		kill = function()
-			if handle then
-				handle.kill()
-			end
-		end,
-	})
-
-	handle = client:schema(current.database, nil, function(err, schema)
-		-- A response that lost its token belongs to a database the user has moved
-		-- away from; painting it now would undo what they did.
-		if not state.finish(key, seq) then
-			return
-		end
-		if current ~= view then
-			return
-		end
-
-		if err then
-			current.status = "error"
-			current.error = err.message
-		elseif schema then
-			current.status = "ready"
-			current.schema = schema
-			state.cache_set(key, schema)
-			-- One key means one request, so this fetch may have superseded the
-			-- sidebar's own — expand a database and describe one of its tables in
-			-- the same breath and that is exactly what happens. The answer is in the
-			-- cache either way, so repainting the tree fills the node in rather than
-			-- leaving it reading `loading…` for a request that was taken over.
-			require("spacetime.ui.sidebar").render()
-		else
-			current.status = "error"
-			current.error = "no schema"
-		end
-		M.render()
-	end)
+	require("spacetime.ui.detail").fetch_schema(current, function()
+		return current == view
+	end, M.render)
 end
 
 ---Show a table's — or a view's — schema in the content window.
@@ -383,7 +331,7 @@ function M.open(request)
 	local state = require("spacetime.state")
 	local key = state.key("schema", request.database)
 
-	-- A different database is a different key, so `state.start` below would leave
+	-- A different database is a different key, so `state.request` below would leave
 	-- the previous fetch running and its token live. Cancel it by hand.
 	if view ~= nil then
 		local previous = state.key("schema", view.database)

@@ -20,7 +20,10 @@
 --    width budget effectively lifted.
 -- 2. **Errors are buffer text.** A failed request, a table the module does not
 --    have, a raise from the layout itself: all three come back through
---    `M.error_lines` as lines, never as a stack trace under the cursor.
+--    `M.error_lines` as lines, never as a stack trace under the cursor. That one
+--    is used beyond the detail views — the row grid and the log view render
+--    their errors through it too, so every `error:` block in the content window
+--    is the same block.
 
 local M = {}
 

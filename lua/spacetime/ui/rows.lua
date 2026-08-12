@@ -68,6 +68,11 @@
 
 local M = {}
 
+-- The `error:` block, shared with every other view. Required at load time like
+-- `ui/keys` below, and safe for the same reason: `ui/sections.lua` requires
+-- nothing at load time, so it cannot cycle back here.
+local sections = require("spacetime.ui.sections")
+
 ---How many rows one `<CR>` asks for.
 ---
 ---There is no server-side cursor, so a page is a `LIMIT`/`OFFSET` window and
@@ -85,7 +90,6 @@ M.OWNER = "rows"
 local LOADING = "loading…"
 local NO_ROWS = "(no rows)"
 local NO_COLUMNS = "(no columns)"
-local UNKNOWN_ERROR = "unknown error"
 
 ---What |spacetime.ui.rows.open()| needs to fetch and render a table.
 ---
@@ -162,29 +166,6 @@ local function primary_keys(entry)
 	return keys
 end
 
----Message text as buffer lines, each marked in full.
----
----Split on newlines first: a server's plain-text SQL error is regularly several
----lines long, and folding it onto one (as `ui/grid.lua` must, for cells) would
----hide the part that says which token it choked on.
----@param message any
----@return string[] lines
----@return SpacetimeGridSpan[] spans
-local function error_lines(message)
-	local grid = require("spacetime.ui.grid")
-	local text = (type(message) == "string" and message ~= "") and message or UNKNOWN_ERROR
-
-	local lines, spans = {}, {}
-	for _, raw in ipairs(vim.split("error: " .. text, "\n", { plain = true })) do
-		local line = grid.sanitise(raw)
-		lines[#lines + 1] = line
-		if #line > 0 then
-			spans[#spans + 1] = { line = #lines - 1, start_col = 0, end_col = #line, hl_group = "SpacetimeError" }
-		end
-	end
-	return lines, spans
-end
-
 ---The badge: how many rows are on screen, where in the table they start, and how
 ---long the server said the query took.
 ---
@@ -220,7 +201,7 @@ local function build(current)
 		return { LOADING }, {}
 	end
 	if current.status == "error" then
-		return error_lines(current.error)
+		return sections.error_lines(current.error)
 	end
 
 	local result = current.result
@@ -307,11 +288,8 @@ function M.render()
 	end
 
 	local buffer = require("spacetime.ui.buffer")
-	if not buffer.owns_content(M.OWNER) then
-		return
-	end
-	local bufnr = buffer.find(buffer.CONTENT_NAME)
-	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+	local bufnr = buffer.content_target(M.OWNER)
+	if not bufnr then
 		return
 	end
 	-- Idempotent, and cheap: a grid on screen always has its keys, including one
@@ -325,23 +303,14 @@ function M.render()
 	else
 		-- Strip the "file:line: " a raise carries: the message is for a user, not
 		-- for whoever is reading this file.
-		lines, spans = error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
+		lines, spans = sections.error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
 	end
 	-- `nil` for `loading…`, an error, or an empty result: there is no grid to map
 	-- a cursor against, and `M.sort` says so by refusing to run.
 	current.layout = layout
 
 	-- The one write. Everything above assembles; nothing below adds a line.
-	buffer.set_lines(bufnr, lines)
-
-	local namespace = buffer.namespace()
-	vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-	for _, span in ipairs(spans) do
-		vim.api.nvim_buf_set_extmark(bufnr, namespace, span.line, span.start_col, {
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
+	buffer.paint(bufnr, lines, spans)
 end
 
 --------------------------------------------------------------------------------
@@ -628,14 +597,10 @@ function M.detail()
 	local bufnr = vim.api.nvim_create_buf(false, true)
 	vim.bo[bufnr].bufhidden = "wipe"
 	vim.bo[bufnr].filetype = buffer.CONTENT_FILETYPE
-	buffer.set_lines(bufnr, lines)
+	buffer.paint(bufnr, lines, spans)
+	-- After the write, not before it: `buffer.set_lines` restores whatever the
+	-- flag was, so a buffer locked first would simply be unlocked again.
 	vim.bo[bufnr].modifiable = false
-	for _, span in ipairs(spans) do
-		vim.api.nvim_buf_set_extmark(bufnr, buffer.namespace(), span.line, span.start_col, {
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
 
 	close_detail()
 	local winid = vim.api.nvim_open_win(bufnr, true, {
@@ -739,9 +704,8 @@ end
 
 ---Run the view's query and repaint when it lands.
 ---
----The handle is registered with `state.start` *before* the request goes out: a
----stubbed transport completes inside the call, and a callback that ran before
----`start` returned would have no token to present.
+---`state.request` is what registers the key *before* the request goes out, which
+---a stubbed transport completing inside the call makes load-bearing.
 ---@param current SpacetimeRowsView
 local function fetch(current)
 	local state = require("spacetime.state")
@@ -749,46 +713,39 @@ local function fetch(current)
 	local query = require("spacetime.lib.sql").select_all(current.table_name, current.limit, current.offset)
 	local client = require("spacetime.lib.client").new(current.connection)
 
-	local handle = nil ---@type SpacetimeHttpHandle|nil
-	local seq = state.start(key, {
-		kill = function()
-			if handle then
-				handle.kill()
+	state.request(key, function(seq)
+		return client:sql(current.database, query, function(err, result)
+			-- A response that lost its token belongs to a table the user has switched
+			-- away from; painting it now would undo what they did.
+			if not state.finish(key, seq) then
+				return
 			end
-		end,
-	})
-
-	handle = client:sql(current.database, query, function(err, result)
-		-- A response that lost its token belongs to a table the user has switched
-		-- away from; painting it now would undo what they did.
-		if not state.finish(key, seq) then
-			return
-		end
-		-- Belt and braces: the token check already covers this, but a response
-		-- must never be able to mutate a view it does not belong to.
-		if current ~= view then
-			return
-		end
-
-		if err then
-			current.status = "error"
-			current.error = err.message
-		elseif result then
-			current.status = "ready"
-			current.result = result
-			reset_order(current)
-			-- Only page one. The cache key *is* the request key — no offset in it,
-			-- which is what lets a held-down `]p` supersede itself — so caching a
-			-- later page under it would hand those rows to the next `<CR>` on the
-			-- table. See point 6 of the module header.
-			if current.offset == 0 then
-				state.cache_set(key, result)
+			-- Belt and braces: the token check already covers this, but a response
+			-- must never be able to mutate a view it does not belong to.
+			if current ~= view then
+				return
 			end
-		else
-			current.status = "error"
-			current.error = "no result"
-		end
-		M.render()
+
+			if err then
+				current.status = "error"
+				current.error = err.message
+			elseif result then
+				current.status = "ready"
+				current.result = result
+				reset_order(current)
+				-- Only page one. The cache key *is* the request key — no offset in it,
+				-- which is what lets a held-down `]p` supersede itself — so caching a
+				-- later page under it would hand those rows to the next `<CR>` on the
+				-- table. See point 6 of the module header.
+				if current.offset == 0 then
+					state.cache_set(key, result)
+				end
+			else
+				current.status = "error"
+				current.error = "no result"
+			end
+			M.render()
+		end)
 	end)
 end
 
@@ -857,7 +814,7 @@ function M.open(request)
 	local key = state.key("rows", request.database, request.table_name)
 
 	-- Point 2 of the module header: a different table is a different key, so
-	-- `state.start` below would leave the previous fetch running and its token
+	-- `state.request` below would leave the previous fetch running and its token
 	-- live. Cancel it by hand.
 	if view ~= nil then
 		local previous = state.key("rows", view.database, view.table_name)

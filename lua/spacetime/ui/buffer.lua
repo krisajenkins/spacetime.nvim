@@ -156,6 +156,30 @@ function M.set_lines(bufnr, lines, first, last)
 	end
 end
 
+---Write `lines` into `bufnr` and mark `spans` over them.
+---
+---The one write every view ends with. Kept here rather than in each view
+---because the ordering is the part that has to be right: the lines land first,
+---the namespace is cleared second — so a repaint cannot leave the previous
+---render's extmarks stranded on lines that have moved or gone — and only then
+---are the new spans set. A span's line and columns are 0-based byte offsets,
+---which is what `ui/grid.lua` and `ui/tree.lua` already produce.
+---@param bufnr integer
+---@param lines string[]
+---@param spans SpacetimeGridSpan[]
+function M.paint(bufnr, lines, spans)
+	M.set_lines(bufnr, lines)
+
+	local namespace = M.namespace()
+	vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+	for _, span in ipairs(spans) do
+		vim.api.nvim_buf_set_extmark(bufnr, namespace, span.line, span.start_col, {
+			end_col = span.end_col,
+			hl_group = span.hl_group,
+		})
+	end
+end
+
 --------------------------------------------------------------------------------
 -- The window options a spacetime buffer imposes on whatever window shows it
 --------------------------------------------------------------------------------
@@ -292,6 +316,26 @@ end
 ---@return boolean
 function M.owns_content(owner)
 	return content_owner == owner
+end
+
+---The content buffer, if `owner` is still the view entitled to paint it.
+---
+---The guard every content view's `render` opens with, in one place: `nil` when
+---another view has claimed the buffer since the request went out, and `nil`
+---when the buffer is not there at all (the layout was closed, or `q` wiped it).
+---Both answers mean the same thing to a caller — there is nothing of ours to
+---paint into — which is why they are one function and not two.
+---@param owner string The name the view claimed the buffer under.
+---@return integer|nil bufnr
+function M.content_target(owner)
+	if not M.owns_content(owner) then
+		return nil
+	end
+	local bufnr = M.find(M.CONTENT_NAME)
+	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+		return nil
+	end
+	return bufnr
 end
 
 ---Every window in the current tabpage showing `bufnr`, in the tabpage's order.

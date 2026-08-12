@@ -78,6 +78,11 @@
 
 local M = {}
 
+-- The `error:` block, shared with every other view. Required at load time like
+-- `ui/keys` below, and safe for the same reason: `ui/sections.lua` requires
+-- nothing at load time, so it cannot cycle back here.
+local sections = require("spacetime.ui.sections")
+
 ---The name this view claims the content buffer under.
 M.OWNER = "logs"
 
@@ -136,7 +141,6 @@ local NO_ENTRIES = "(no log entries)"
 ---view and a filtered-to-nothing view are different problems, and only one of
 ---them is fixed by pressing `<`.
 local NO_ENTRIES_AT_LEVEL = "(no log entries at %s or above — press < to widen)"
-local UNKNOWN_ERROR = "unknown error"
 local NO_TIMESTAMP = "?"
 
 ---Highlight group per canonical level. `lib/logs.parse_line` canonicalises the
@@ -204,28 +208,6 @@ end
 -- Building the lines
 --------------------------------------------------------------------------------
 
----Message text as buffer lines, each marked in full.
----
----Split on newlines first: a server's error is regularly several lines long, and
----folding it onto one would hide the part that says what went wrong.
----@param message any
----@return string[] lines
----@return SpacetimeGridSpan[] spans
-local function error_lines(message)
-	local grid = require("spacetime.ui.grid")
-	local text = (type(message) == "string" and message ~= "") and message or UNKNOWN_ERROR
-
-	local lines, spans = {}, {}
-	for _, raw in ipairs(vim.split("error: " .. text, "\n", { plain = true })) do
-		local line = grid.sanitise(raw)
-		lines[#lines + 1] = line
-		if #line > 0 then
-			spans[#spans + 1] = { line = #lines - 1, start_col = 0, end_col = #line, hl_group = "SpacetimeError" }
-		end
-	end
-	return lines, spans
-end
-
 ---The badge: which database, how much of it is on screen, and how much was
 ---asked for.
 ---
@@ -276,7 +258,7 @@ local function build(current)
 		return { LOADING }, {}
 	end
 	if current.status == "error" then
-		return error_lines(current.error)
+		return sections.error_lines(current.error)
 	end
 
 	local grid = require("spacetime.ui.grid")
@@ -355,11 +337,8 @@ function M.render()
 	end
 
 	local buffer = require("spacetime.ui.buffer")
-	if not buffer.owns_content(M.OWNER) then
-		return
-	end
-	local bufnr = buffer.find(buffer.CONTENT_NAME)
-	if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+	local bufnr = buffer.content_target(M.OWNER)
+	if not bufnr then
 		return
 	end
 
@@ -383,20 +362,11 @@ function M.render()
 	else
 		-- Strip the "file:line: " a raise carries: the message is for a user, not
 		-- for whoever is reading this file.
-		lines, spans = error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
+		lines, spans = sections.error_lines((tostring(built_lines):gsub("^.-:%d+: ", "")))
 	end
 
 	-- The one write. Everything above assembles; nothing below adds a line.
-	buffer.set_lines(bufnr, lines)
-
-	local namespace = buffer.namespace()
-	vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-	for _, span in ipairs(spans) do
-		vim.api.nvim_buf_set_extmark(bufnr, namespace, span.line, span.start_col, {
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
+	buffer.paint(bufnr, lines, spans)
 
 	if at_bottom and winid then
 		-- `pcall`: a window closed between the two halves of this function is not
@@ -474,7 +444,7 @@ end
 ---and not `state.debounce`.
 ---@param current SpacetimeLogsView
 ---@param key string The `state` key this follow is registered under.
----@param seq integer The token `state.start` handed back.
+---@param seq integer The token `state.request` handed back.
 ---@param pending spacetime.LogEntry[] The table `on_entry` appends to.
 local function start_flush(current, key, seq, pending)
 	stop_flush()
@@ -563,10 +533,9 @@ end
 
 ---Fetch the backlog — and, when following, keep reading — and repaint.
 ---
----The handle is registered with `state.start` *before* the request goes out: a
----stubbed transport completes inside the call, and a callback that ran before
----`start` returned would have no token to present. The flush timer starts before
----it too, for the same reason.
+---`state.request` is what registers the key *before* the request goes out, which
+---a stubbed transport completing inside the call makes load-bearing. The flush
+---timer starts inside it, before the request, for the same reason.
 ---@param current SpacetimeLogsView
 local function fetch(current)
 	local state = require("spacetime.state")
@@ -577,48 +546,41 @@ local function fetch(current)
 	-- be anything but a plain Lua table. See point 1 of the module header.
 	local pending = {} ---@type spacetime.LogEntry[]
 
-	local handle = nil ---@type SpacetimeHttpHandle|nil
-	local seq = state.start(key, {
-		kill = function()
-			if handle then
-				handle.kill()
+	state.request(key, function(seq)
+		if current.follow then
+			local buffer = require("spacetime.ui.buffer")
+			current.following = true
+			start_flush(current, key, seq, pending)
+			watch(buffer.find(buffer.CONTENT_NAME))
+		end
+
+		return client:logs(current.database, current.num_lines, current.follow, function(entry)
+			pending[#pending + 1] = entry
+		end, function(err)
+			-- A response that lost its token belongs to a database the user has moved
+			-- away from; painting it now would undo what they did. It is also what
+			-- makes `cb(nil, nil)` — a clean cancel, not an error — a no-op here: the
+			-- only thing that cancels this request burns the token as it goes.
+			if not state.finish(key, seq) then
+				return
 			end
-		end,
-	})
+			-- This request is still the current one, so the timer running is this
+			-- follow's: the stream has ended, so the clock it was flushing on goes too.
+			stop_flush()
+			current.following = false
+			if current ~= view then
+				return
+			end
 
-	if current.follow then
-		local buffer = require("spacetime.ui.buffer")
-		current.following = true
-		start_flush(current, key, seq, pending)
-		watch(buffer.find(buffer.CONTENT_NAME))
-	end
-
-	handle = client:logs(current.database, current.num_lines, current.follow, function(entry)
-		pending[#pending + 1] = entry
-	end, function(err)
-		-- A response that lost its token belongs to a database the user has moved
-		-- away from; painting it now would undo what they did. It is also what
-		-- makes `cb(nil, nil)` — a clean cancel, not an error — a no-op here: the
-		-- only thing that cancels this request burns the token as it goes.
-		if not state.finish(key, seq) then
-			return
-		end
-		-- This request is still the current one, so the timer running is this
-		-- follow's: the stream has ended, so the clock it was flushing on goes too.
-		stop_flush()
-		current.following = false
-		if current ~= view then
-			return
-		end
-
-		if err then
-			current.status = "error"
-			current.error = err.message
-		else
-			current.status = "ready"
-			append(current, take(pending))
-		end
-		M.render()
+			if err then
+				current.status = "error"
+				current.error = err.message
+			else
+				current.status = "ready"
+				append(current, take(pending))
+			end
+			M.render()
+		end)
 	end)
 end
 
@@ -648,7 +610,7 @@ function M.open(request)
 	-- one flush timer, and the follow that is starting is about to want it.
 	teardown(view)
 
-	-- A different database is a different key, so `state.start` below would leave
+	-- A different database is a different key, so `state.request` below would leave
 	-- the previous fetch running and its token live. Cancel it by hand.
 	if view ~= nil then
 		local previous = state.key("logs", view.database)

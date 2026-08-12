@@ -219,18 +219,12 @@ end
 
 ---A scalar as micros: a number, or the decimal string `lib/json.lua` hands back
 ---for a run of 16 or more digits — which is exactly what every real timestamp
----is.
+---is. That module owns the coercion, because it is the one that makes the second
+---spelling possible.
 ---@param value any
 ---@return integer|nil
 local function to_micros(value)
-	if type(value) == "number" then
-		return math.floor(value)
-	end
-	if type(value) == "string" and value:match("^%-?%d+$") then
-		local n = tonumber(value)
-		return n and math.floor(n) or nil
-	end
-	return nil
+	return require("spacetime.lib.json").to_integer(value)
 end
 
 ---Trim a fixed-point decimal down to its significant digits: `"1.500"` ->

@@ -91,7 +91,8 @@ lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
   sql.lua                      the SQL response envelope and the SELECT builder
   value.lua                    a SATS value plus its AlgebraicType, rendered
 lua/spacetime/ui/              buffers, windows, keymaps
-  buffer.lua                   scratch buffers and the sidebar/content layout
+  buffer.lua                   scratch buffers, the layout, and the one write
+  detail.lua                   the schema fetch the two detail views share
   grid.lua                     row-grid layout: columns and cells -> lines + spans
   highlights.lua               default highlight groups (all `default` links)
   keys.lua                     buffer-local keymaps, and the unbinding

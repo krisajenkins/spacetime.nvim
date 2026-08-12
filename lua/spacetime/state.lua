@@ -176,6 +176,44 @@ function M.cancel(key)
 	M.data.seq[key] = next_seq
 end
 
+---Register under `key`, then put the request on the wire.
+---
+---Every caller of `start` wants the same thing and has to build it the same
+---way: a handle that does not exist yet, wrapped in a `kill` closure that reads
+---it when the time comes. The order is the part that has to be right, and it is
+---the reason this is a function rather than a comment repeated at five call
+---sites — **the key must be registered before the request goes out**. A stubbed
+---transport (every test's) completes *inside* `launch`, so a callback that ran
+---before `start` had returned would have no token to present and would drop its
+---own response as stale.
+---
+---```lua
+---local seq = state.request(key, function(seq)
+---  return client:schema(db, nil, function(err, schema)
+---    if not state.finish(key, seq) then return end -- stale: drop, silently
+---    ...
+---  end)
+---end)
+---```
+---@param key string
+---@param launch fun(seq: integer): SpacetimeHttpHandle|nil The request. `nil` when nothing went out.
+---@return integer seq The token that `finish`/`is_current` will accept.
+function M.request(key, launch)
+	want(type(launch) == "function", "request needs a launch function")
+
+	local handle = nil ---@type SpacetimeHttpHandle|nil
+	local seq = M.start(key, {
+		kill = function()
+			if handle then
+				handle.kill()
+			end
+		end,
+	})
+
+	handle = launch(seq)
+	return seq
+end
+
 ---Cancel every in-flight key. For `q`, `BufWipeout` and `VimLeavePre`.
 function M.cancel_all()
 	-- Collected first: `cancel` writes to `M.data.inflight` as it goes.

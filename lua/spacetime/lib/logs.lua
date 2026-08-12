@@ -167,28 +167,17 @@ local function from_rfc3339(s)
 	return (seconds - offset) * 1000000 + micros
 end
 
----A decoded value as an integer, accepting the decimal string `lib/json.lua`
----hands back for a long run of digits.
----@param value any
----@return integer|nil
-local function to_integer(value)
-	if type(value) == "number" then
-		return math.floor(value)
-	end
-	if type(value) == "string" and value:match("^%-?%d+$") then
-		local n = tonumber(value)
-		return n and math.floor(n) or nil
-	end
-	return nil
-end
-
 ---A decoded `ts` as micros since the epoch: a number, a decimal string, or an
 ---RFC3339 string. Anything else — absent, `vim.NIL`, junk — is `nil`, which the
 ---caller keeps rather than treating as a parse failure.
+---
+---The first two spellings are `lib/json.to_integer`'s business — a long run of
+---digits arrives as a string because that module put it in quotes — and only the
+---third is this one's.
 ---@param value any
 ---@return integer|nil
 local function to_micros(value)
-	local integer = to_integer(value)
+	local integer = require("spacetime.lib.json").to_integer(value)
 	if integer then
 		return integer
 	end
@@ -257,7 +246,7 @@ function M.parse_line(s)
 		ts = to_micros(raw.ts),
 		target = to_optional_string(raw.target),
 		filename = to_optional_string(raw.filename),
-		line_number = to_integer(raw.line_number),
+		line_number = json.to_integer(raw.line_number),
 		["function"] = to_optional_string(raw["function"]),
 		message = raw.message,
 	}

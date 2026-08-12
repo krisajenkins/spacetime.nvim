@@ -17,7 +17,7 @@
 --    goes out under `commands.DATABASES_KEY`, so a second `:Spacetime` kills the
 --    first fetch, and a response that arrives after its token was burned is
 --    dropped rather than painted over the newer one. The handle is registered
---    with `state.start` *before* the request is made: a stubbed transport (and,
+--    with `state.request` *before* the request is made: a stubbed transport (and,
 --    one day, a synchronous cache path) can complete inside the call, and a
 --    callback that ran before `start` returned would have no token to present.
 -- 3. **`list_databases` may answer with an error *and* a list.** It is the one
@@ -233,16 +233,7 @@ function M.render()
 		end
 	end
 
-	buffer.set_lines(bufnr, rendered.lines)
-
-	local namespace = buffer.namespace()
-	vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-	for _, span in ipairs(rendered.spans) do
-		vim.api.nvim_buf_set_extmark(bufnr, namespace, span.line, span.start_col, {
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
+	buffer.paint(bufnr, rendered.lines, rendered.spans)
 
 	if winid and row then
 		vim.api.nvim_win_set_cursor(winid, { math.min(row, math.max(#rendered.lines, 1)), 0 })
@@ -298,28 +289,22 @@ local function fetch_schema(name)
 
 	local client = require("spacetime.lib.client").new(connection)
 
-	-- Registered before the request goes out; see point 2 of the module header.
-	local handle = nil ---@type SpacetimeHttpHandle|nil
-	local seq = state.start(key, {
-		kill = function()
-			if handle then
-				handle.kill()
+	-- `state.request` registers the key before the request goes out; see point 2
+	-- of the module header.
+	state.request(key, function(seq)
+		return client:schema(name, nil, function(err, schema)
+			-- A schema that lost its token belongs to a node the user has collapsed,
+			-- closed or refreshed past; painting it now would undo what they did.
+			if not state.finish(key, seq) then
+				return
 			end
-		end,
-	})
-
-	handle = client:schema(name, nil, function(err, schema)
-		-- A schema that lost its token belongs to a node the user has collapsed,
-		-- closed or refreshed past; painting it now would undo what they did.
-		if not state.finish(key, seq) then
-			return
-		end
-		if err then
-			schema_results[name] = err.kind == "paused" and { paused = true } or { error = err.message }
-		elseif schema then
-			state.cache_set(key, schema)
-		end
-		M.render()
+			if err then
+				schema_results[name] = err.kind == "paused" and { paused = true } or { error = err.message }
+			elseif schema then
+				state.cache_set(key, schema)
+			end
+			M.render()
+		end)
 	end)
 end
 
@@ -422,7 +407,7 @@ end
 ---Fetch the database list and render it.
 ---
 ---Cancels whatever was already in flight under the key, by virtue of
----`state.start`.
+---`state.request`, which registers under it.
 local function fetch()
 	local state = require("spacetime.state")
 	local key = databases_key()
@@ -445,33 +430,27 @@ local function fetch()
 
 	local client = require("spacetime.lib.client").new(connection)
 
-	-- Registered before the request goes out; see point 2 of the module header.
-	local handle = nil ---@type SpacetimeHttpHandle|nil
-	local seq = state.start(key, {
-		kill = function()
-			if handle then
-				handle.kill()
+	-- `state.request` registers the key before the request goes out; see point 2
+	-- of the module header.
+	state.request(key, function(seq)
+		return client:list_databases(identity, function(err, databases)
+			if not state.finish(key, seq) then
+				return
 			end
-		end,
-	})
-
-	handle = client:list_databases(identity, function(err, databases)
-		if not state.finish(key, seq) then
-			return
-		end
-		if databases then
-			-- Both arguments may be set: partial data plus the first `/names`
-			-- failure. Keep both — the failed entries carry their own message.
-			state.cache_set(key, databases)
-			expand_project_database(databases)
-			set_databases(databases)
-			fetch_expanded_schemas()
-		else
-			model.status = "error"
-			model.error = err and err.message or "could not list databases"
-			model.databases = nil
-		end
-		M.render()
+			if databases then
+				-- Both arguments may be set: partial data plus the first `/names`
+				-- failure. Keep both — the failed entries carry their own message.
+				state.cache_set(key, databases)
+				expand_project_database(databases)
+				set_databases(databases)
+				fetch_expanded_schemas()
+			else
+				model.status = "error"
+				model.error = err and err.message or "could not list databases"
+				model.databases = nil
+			end
+			M.render()
+		end)
 	end)
 end
 
