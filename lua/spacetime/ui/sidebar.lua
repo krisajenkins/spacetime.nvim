@@ -5,7 +5,7 @@
 -- database list, paints the result, and binds the keys that drive it. It lives
 -- under `ui/` and may therefore touch `vim.api`; `lib/` may not.
 --
--- Seven things this file exists to get right:
+-- Eight things this file exists to get right:
 --
 -- 1. **The connection is resolved before the layout is opened.** `open_layout()`
 --    displaces the current window's buffer, and `config.current()` reads the
@@ -44,6 +44,13 @@
 --    to be one-shot: every later paint — `r`, a schema landing, a second
 --    `:Spacetime` — restores the row the cursor was already on, and yanking it
 --    back to the project database each time would fight the user for the cursor.
+-- 8. **`r` keeps the cursor on the node it was pressed on.** A refetch replaces
+--    the whole tree — the list goes back to a single `loading…` line, and the
+--    refreshed database's children with it — so the row the cursor was on means
+--    nothing by the time the new tree lands. `r` therefore records *what* was
+--    under the cursor, and the renders that follow put it back, degrading the way
+--    the tree does: the table if it is still there, its database if it is not,
+--    and wherever the preserved row lands if the database has gone too.
 --
 -- Every `require` is inside a function body, matching `commands.lua`: this
 -- module is only reached by running a command, and `spacetime.commands` requires
@@ -89,6 +96,12 @@ local project_database = nil ---@type string|nil
 -- project database and clears it. One-shot, so `r` and every later repaint keep
 -- the cursor where the user left it. See point 7 of the module header.
 local focus_project = false ---@type boolean
+
+-- What the cursor was on when `r` was pressed: the database, and the SQL name of
+-- the table or view inside it, if it was on one. Held until a render can settle
+-- it — the list, and then the database's own schema, have to land first — and
+-- dropped the moment the user makes a selection of their own. See point 8.
+local focus_target = nil ---@type { database: string, name: string|nil }|nil
 
 -- The buffer the content window displaced when the layout opened, so `q` can
 -- put it back rather than leaving a `spacetime://content` scratch behind.
@@ -193,6 +206,45 @@ local function is_project_database(name, identity)
 	return name == project_database or identity == project_database
 end
 
+---Where `focus_target` has got to in the tree just rendered, and whether that is
+---its final answer.
+---
+---Called after `nodes` has been rebuilt, and it reads exactly what the user can
+---see. The two returns are separate because "not found" means two different
+---things: a table that has not been re-rendered *yet* — its database is still
+---fetching its schema — is worth waiting for, and a table its database no longer
+---has is not. So the row degrades to the database, and only a settled database
+---(or a settled list without it) retires the target.
+---@param target { database: string, name: string|nil }
+---@return integer|nil row The line to sit on, or `nil` to leave the cursor be.
+---@return boolean settled Stop looking: this is where the node ended up.
+local function locate_target(target)
+	local database_row = nil ---@type integer|nil
+	local database_settled = false
+	for _, node in ipairs(nodes) do
+		if node.database == target.database then
+			if node.kind == "database" then
+				database_row = node.line
+				-- A database still fetching its schema has not finished producing the
+				-- children the target may be one of.
+				database_settled = (node.db and node.db.status or "idle") ~= "loading"
+			elseif target.name ~= nil and (node.canonical or node.name) == target.name then
+				return node.line, true
+			end
+		end
+	end
+
+	if database_row == nil then
+		-- Either the list has not landed yet, or this identity no longer has that
+		-- database. Only the second is an answer.
+		return nil, model.status ~= "loading"
+	end
+	if target.name == nil then
+		return database_row, true
+	end
+	return database_row, database_settled
+end
+
 ---Paint the model into the sidebar buffer.
 ---
 ---A no-op when the sidebar buffer does not exist yet: the model is still there
@@ -213,12 +265,21 @@ function M.render()
 	nodes = rendered.nodes
 
 	-- Read before the write and put back after it: a refetch that keeps the same
-	-- databases must not throw the cursor back to the top of the tree. The project
-	-- database overrides the preserved row exactly once — on the first settled
-	-- render after a fresh layout opened, and never again.
+	-- databases must not throw the cursor back to the top of the tree. Two things
+	-- override the preserved row, each exactly once and neither ever both: the node
+	-- `r` was pressed on, until the refetch has settled it, and the project
+	-- database, on the first settled render after a fresh layout opened.
 	local winid = buffer.window_showing(bufnr)
 	local row = winid and vim.api.nvim_win_get_cursor(winid)[1] or nil
-	if winid and focus_project then
+	if winid and focus_target then
+		local target_row, settled = locate_target(focus_target)
+		-- A target that is not on screen *yet* leaves the cursor alone rather than
+		-- moving it somewhere it did not ask to be; the next render tries again.
+		row = target_row or row
+		if settled then
+			focus_target = nil
+		end
+	elseif winid and focus_project then
 		for _, node in ipairs(nodes) do
 			if node.kind == "database" and is_project_database(node.database, node.db and node.db.identity) then
 				row = node.line
@@ -552,7 +613,10 @@ function M.reconnect()
 	-- to them would stop the new one being asked at all. Expansion is kept: it is
 	-- the user's arrangement of the tree rather than anything a server said, and a
 	-- database the new server also has is refetched by `fetch_expanded_schemas`.
+	-- A pending refresh target goes for the same reason: it names a node of the
+	-- old server's tree.
 	schema_results = {}
+	focus_target = nil
 
 	-- Whatever the content window is showing came from the old server, so it goes
 	-- back to the placeholder rather than sitting there looking current.
@@ -576,11 +640,25 @@ end
 ---paused database: it is never asked again on its own, and `r` is how you ask
 ---once it has woken up. The list fetch that follows re-requests the schema of
 ---everything still expanded.
+---
+---The node under the cursor is also what the cursor comes back to once the new
+---tree has been painted — see point 8 of the module header. It is recorded by
+---name rather than by row because the row is exactly what the refetch destroys.
 function M.refresh()
 	local state = require("spacetime.state")
 
 	local node = M.node_under_cursor()
+	-- Set on every `r`, and cleared by one pressed on a line that belongs to no
+	-- database: a target left over from an earlier refresh must not outlive the
+	-- refresh that replaced it.
+	focus_target = nil
+
 	if node and node.database then
+		-- A message line inside a database — `loading…`, an error, `(no tables)` —
+		-- carries the database and no name, so refreshing on one comes back to the
+		-- database itself, which is the only thing it identified.
+		focus_target = { database = node.database, name = node.canonical or node.name }
+
 		state.cancel(state.key("schema", node.database))
 		schema_results[node.database] = nil
 		state.cache_invalidate_db(node.database)
@@ -728,6 +806,10 @@ function M.select()
 	if not node then
 		return
 	end
+
+	-- The user has moved on: a refresh still in flight must not pull the cursor
+	-- off whatever they have just opened when its tree lands.
+	focus_target = nil
 
 	if node.kind == "database" then
 		local name = node.database

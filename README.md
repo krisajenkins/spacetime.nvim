@@ -440,6 +440,11 @@ never both apply. `R` is the capital because the lower-case `r` refreshes.
 system clipboard. `r` on a database node also drops that database's schema and
 rows, and clears a recorded pause, which is how you retry a paused database.
 
+`r` puts the cursor back on the node it was pressed on once the new tree has
+been painted, even though the tree was replaced from the top in between. If the
+table or view has gone, the cursor lands on its database; if the database has
+gone too, on the top of the tree.
+
 ### Rows
 
 In the content window *while it is showing a grid*:

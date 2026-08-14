@@ -720,6 +720,14 @@ pause — the cache has no expiry, so this is how you ask for fresh data, and
 how you retry a database that was paused. A database still expanded is
 refilled by the same keystroke.
 
+The refetch replaces the whole tree — briefly there is nothing on screen but a
+`loading…` line — so `r` remembers WHAT was under the cursor rather than which
+row, and puts the cursor back there once the new tree has been painted. If the
+table or view is no longer in the schema, the cursor lands on its database
+instead; if the database is no longer in the list, on the top of the tree.
+Selecting something with `<CR>` while the refetch is still in flight cancels
+the restoration: the cursor stays where you have just put it.
+
 `q` closes both windows AND cancels every request still in flight, so a
 response cannot arrive after you have closed the browser; a log follow is
 stopped along with them. It works from either window — the sidebar and the

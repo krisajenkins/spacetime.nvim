@@ -830,6 +830,87 @@ T["r drops the cache and fetches again"] = function()
 	expect.equality(child.lua_get([[STATE.cache_get(KEY)[1].name]]), "renamed")
 end
 
+-- The refetch replaces the tree from the top — the list goes back to a single
+-- `loading…` line before the new one lands — so the row the cursor was on is
+-- gone by the time there is anything to sit on. These four cases pin the whole
+-- of what `r` puts it back to.
+T["r comes back to the table it was pressed on"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("j", "<CR>")
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    📋🔒 widget" })
+
+	child.type_keys("j")
+	expect.equality(sidebar_cursor(), 3)
+
+	child.type_keys("r")
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    📋🔒 widget" })
+	expect.equality(sidebar_cursor(), 3)
+end
+
+-- Not the row: the replacement schema has a table in the same position, so a
+-- cursor that merely stayed on line 3 would land on `gadget` and look right.
+T["r comes back to the database when the table has gone"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("j", "<CR>", "j")
+	expect.equality(sidebar_cursor(), 3)
+
+	child.lua([[
+		SCHEMA_RESPONDER(function()
+			return { status = 200, body = '{"typespace":{"types":[]},"tables":[{"name":"gadget"}]}' }
+		end)
+	]])
+	child.type_keys("r")
+
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    📋🔒 gadget" })
+	expect.equality(sidebar_cursor(), 2)
+end
+
+T["r leaves the cursor at the top when the database has gone"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("j", "<CR>", "j")
+	expect.equality(sidebar_cursor(), 3)
+
+	-- The identity now owns `spacegym` alone, so the node the cursor was on has
+	-- no database left to fall back to.
+	child.lua([[
+		local base = RESPONDER
+		RESPONDER = function(url)
+			if url:find('/v1/identity/', 1, true) then
+				return { status = 200, body = '{"identities":["aa11"]}' }
+			end
+			return base(url)
+		end
+	]])
+	child.type_keys("r")
+
+	expect.equality(sidebar_lines(), { "▸ spacegym" })
+	expect.equality(sidebar_cursor(), 1)
+end
+
+-- The restoration is held across the renders a refetch takes, so it has to let
+-- go the moment the user does something with the cursor themselves.
+T["a selection during a refresh keeps the cursor the user moved"] = function()
+	child.lua([[ vim.cmd('Spacetime') ]])
+	child.type_keys("j", "<CR>", "j")
+	expect.equality(sidebar_cursor(), 3)
+
+	-- The schema never answers, so the target is still pending: `spacetutorial`
+	-- is left reading `loading…` and the cursor is on its database line.
+	child.lua([[ SCHEMA_RESPONDER(function() return nil end) ]])
+	child.type_keys("r")
+	expect.equality(sidebar_lines(), { "▸ spacegym", "▾ spacetutorial", "    loading…" })
+	expect.equality(sidebar_cursor(), 2)
+
+	-- Expanding `spacegym` retires the target: the repaint that grows the tree
+	-- leaves the cursor on what was just opened rather than hauling it back down
+	-- to the `spacetutorial` line the pending target names.
+	child.lua([[ SCHEMA_RESPONDER(function() return { status = 200, body = MINI_SCHEMA } end) ]])
+	child.type_keys("gg", "<CR>")
+
+	expect.equality(sidebar_lines(), { "▾ spacegym", "    📋🔒 widget", "▾ spacetutorial", "    loading…" })
+	expect.equality(sidebar_cursor(), 1)
+end
+
 T["? prints the key map"] = function()
 	child.lua([[ vim.cmd('Spacetime') ]])
 	child.type_keys("?")
