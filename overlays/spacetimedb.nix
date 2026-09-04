@@ -1,93 +1,92 @@
 # @update github-release clockworklabs/SpacetimeDB
 # SpacetimeDB - distributed database with intelligent modules
 #
-# Installs the upstream release binaries rather than building from source.
-# nixpkgs lags the release cadence badly (26.05 pins 2.2.0) and the source build
-# is a large Rust workspace, so a from-source override would cost ~30 minutes on
-# a cold CI runner. The release tarballs are a download.
+# Upstream publishes prebuilt binaries only; nothing is built from source here,
+# so every supported platform needs its own tarball URL and hash in `sources`
+# below.
 #
-# This mirrors ~/nix-kris/overlays/spacetimedb.nix, extended to every platform we
-# build on: that overlay is aarch64-darwin only, but CI runs x86_64-linux. The
-# aarch64-darwin URL and hash are identical to it, so a local `nix develop` is a
-# store cache hit rather than a fresh download.
+# To update to the latest version:
+# 1. Check latest release:
+#    curl -s https://api.github.com/repos/clockworklabs/SpacetimeDB/releases/latest | jq -r '.tag_name'
 #
-# To update to a new version:
-# 1. Check the latest release:
-#      curl -s https://api.github.com/repos/clockworklabs/SpacetimeDB/releases/latest | jq -r '.tag_name'
-# 2. Bump `version` below (without the 'v' prefix).
-# 3. Re-hash every platform (nix-prefetch-url caches into the store, so the
-#    build that follows won't re-download):
-#      for t in aarch64-apple-darwin x86_64-apple-darwin \
+# 2. Update the version number below (without the 'v' prefix)
+#
+# 3. Re-hash every entry in `sources` (nix-prefetch-url caches into the store,
+#    so the build that follows won't re-download):
+#
+#      V=2.9.0
+#      for T in aarch64-apple-darwin x86_64-apple-darwin \
 #               aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
-#        h=$(nix-prefetch-url "https://github.com/clockworklabs/SpacetimeDB/releases/download/vVERSION/spacetime-$t.tar.gz")
-#        echo "$t = $(nix hash convert --hash-algo sha256 --to sri "$h")"
+#        U="https://github.com/clockworklabs/SpacetimeDB/releases/download/v$V/spacetime-$T.tar.gz"
+#        echo "$T  $(nix hash convert --hash-algo sha256 --to sri \
+#                     "$(nix-prefetch-url "$U")")"
 #      done
-# 4. Test: nix develop -c spacetime --version
 #
-# The tarball has no top-level directory; both binaries sit at the root:
-#   - spacetimedb-cli (installed as 'spacetime', matching upstream)
+# 4. Test: nix build .#spacetimedb
+#
+# Note: Tarball contains two binaries at root level:
+#   - spacetimedb-cli (installed as 'spacetime')
 #   - spacetimedb-standalone
 #
 # GitHub: https://github.com/clockworklabs/SpacetimeDB
 # Releases: https://github.com/clockworklabs/SpacetimeDB/releases
 
 final: prev:
+
 let
-  inherit (prev) lib stdenv;
+  version = "2.9.0";
 
-  version = "2.8.0";
-
-  # Nix system -> the Rust target triple naming its release asset, plus that
-  # asset's hash. Windows is published too but is not a platform we support.
-  targets = {
+  # Nix system -> the Rust target triple upstream names its tarball after.
+  # Upstream also ships x86_64-pc-windows-msvc, which Nix has no use for.
+  sources = {
     aarch64-darwin = {
-      triple = "aarch64-apple-darwin";
-      hash = "sha256-d1EY/FjzukeMZB91gUcHYD+R6Po51tEuHVMnB1ZJqtE=";
+      target = "aarch64-apple-darwin";
+      hash = "sha256-zb/akPnkD3s85QqYDBKaxtF+hLp5MnEUmrxNW/kBTRs=";
     };
     x86_64-darwin = {
-      triple = "x86_64-apple-darwin";
-      hash = "sha256-uJ6Uz4yF0F17ikTT5xQZjEHBpSUJR3qU1gwR45Mx+dk=";
+      target = "x86_64-apple-darwin";
+      hash = "sha256-SMje8OAExZgHaboDvUEHoHmrUslj5i4NAaUrsiMWyCs=";
     };
     aarch64-linux = {
-      triple = "aarch64-unknown-linux-gnu";
-      hash = "sha256-vsKj7GaavbgwtpFQkVycLRwApcniIkvx8wiMvtxRSBg=";
+      target = "aarch64-unknown-linux-gnu";
+      hash = "sha256-zSBOQQhjsFR3YLfWb8FB0LZ2U9NKdVlSt7jIjhOlrMk=";
     };
     x86_64-linux = {
-      triple = "x86_64-unknown-linux-gnu";
-      hash = "sha256-IKeWH+nOfHj9nosiyU/tiTN8obuKV6iWH+bn8iXyUzA=";
+      target = "x86_64-unknown-linux-gnu";
+      hash = "sha256-R65oeFla/oiMcaEuJpWE4Yjmp87+VPkwHM8iQFutmzs=";
     };
   };
 
-  system = stdenv.hostPlatform.system;
+  inherit (prev.stdenv.hostPlatform) isLinux system;
 
-  target =
-    targets.${system}
-      or (throw "spacetimedb: no upstream release binary for ${system}");
+  source = sources.${system} or (throw
+    "spacetimedb: upstream publishes no build for ${system} (have: ${
+      prev.lib.concatStringsSep ", " (builtins.attrNames sources)
+    })");
 in
 {
-  spacetimedb = stdenv.mkDerivation {
+  spacetimedb = prev.stdenv.mkDerivation {
     pname = "spacetime";
     inherit version;
 
     src = prev.fetchurl {
-      url = "https://github.com/clockworklabs/SpacetimeDB/releases/download/v${version}/spacetime-${target.triple}.tar.gz";
-      inherit (target) hash;
+      url = "https://github.com/clockworklabs/SpacetimeDB/releases/download/v${version}/spacetime-${source.target}.tar.gz";
+      inherit (source) hash;
     };
 
-    # No subdirectory in the tarball; the binaries are at the root.
+    # No subdirectory in tarball, binaries are at root
     sourceRoot = ".";
 
-    # The Linux builds are ordinary dynamically-linked ELF binaries expecting a
-    # FHS loader, so they need patching to run from the Nix store. Mach-O builds
-    # need no equivalent.
-    nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
-      prev.autoPatchelfHook
-    ];
+    # The Linux tarballs are ordinary dynamically-linked ELF executables built
+    # against a distro glibc: they ask for the interpreter at
+    # /lib64/ld-linux-*.so, which doesn't exist on a Nix-managed system.
+    # autoPatchelfHook rewrites the interpreter and RPATH to point into the
+    # store. The Mach-O binaries need no equivalent fixup.
+    nativeBuildInputs = prev.lib.optional isLinux prev.autoPatchelfHook;
 
-    buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
-      stdenv.cc.cc.lib
-      prev.openssl
-      prev.zlib # libz.so.1, wanted by the `spacetime` CLI
+    buildInputs = prev.lib.optionals isLinux [
+      prev.zlib # libz.so.1 (spacetimedb-cli, x86_64 only)
+      prev.stdenv.cc.cc.lib # libgcc_s.so.1, libstdc++.so.6
     ];
 
     installPhase = ''
@@ -95,7 +94,7 @@ in
 
       mkdir -p $out/bin
 
-      # Install the CLI binary as 'spacetime' (matching upstream's name)
+      # Install the CLI binary as 'spacetime' (matching upstream name)
       install -m755 spacetimedb-cli $out/bin/spacetime
 
       # Install the standalone server
@@ -104,14 +103,12 @@ in
       runHook postInstall
     '';
 
-    meta = {
+    meta = with prev.lib; {
       description = "SpacetimeDB CLI and standalone server - a distributed database with intelligent modules";
       homepage = "https://spacetimedb.com";
-      # Business Source License 1.1 - converts to AGPL-3.0 on 2030-10-31
-      license = lib.licenses.bsl11;
-      platforms = builtins.attrNames targets;
+      license = licenses.bsl11; # Business Source License 1.1 - converts to AGPL-3.0 on 2030-10-31
+      platforms = builtins.attrNames sources;
       mainProgram = "spacetime";
-      sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
     };
   };
 }
