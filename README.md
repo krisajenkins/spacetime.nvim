@@ -283,8 +283,9 @@ SQL, both are shown — `ledgerEntry (ledger_entry)`. The SQL endpoint accepts
 either, so neither spelling is a trap.
 
 Nothing in this view is truncated, and the only keys it binds are the shared
-`q` and `<Tab>`. The schema is the same one the sidebar caches, so describing a
-table in a database you have already expanded costs no request.
+`q`, `<Tab>` and `r`. The schema is the same one the sidebar caches, so
+describing a table in a database you have already expanded costs no request —
+and `r` is what asks the server again.
 
 ### `:SpacetimeReducers`
 
@@ -316,9 +317,9 @@ than guessed at.
 
 The database may be left off, in which case it is the one the connection
 resolved to. Nothing here is truncated, the only keys it binds are the shared
-`q` and `<Tab>`, and the schema is the same one the sidebar and the schema view
-share — so listing the reducers of a database you have already expanded costs
-no request.
+`q`, `<Tab>` and `r`, and the schema is the same one the sidebar and the schema
+view share — so listing the reducers of a database you have already expanded
+costs no request, and `r` refreshes it for all three.
 
 ### `:SpacetimeLogs`
 
@@ -421,7 +422,7 @@ In the `spacetime://sidebar` buffer (filetype `spacetimetree`):
 | `R`           | List the reducers of the database the cursor is inside |
 | `gl`          | Show the logs of the database the cursor is inside     |
 | `gL`          | Follow those logs live                                 |
-| `r`           | Refresh: drop the cache and fetch again                |
+| `r`           | Refresh: drop the cache and fetch both halves again    |
 | `q`           | Close the layout                                       |
 | `<Tab>`       | Move to the other window of the layout                 |
 | `y`           | Yank the node's name                                   |
@@ -437,8 +438,20 @@ and the grid's `s` (sort, below) are mappings in different buffers, so they
 never both apply. `R` is the capital because the lower-case `r` refreshes.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
-system clipboard. `r` on a database node also drops that database's schema and
-rows, and clears a recorded pause, which is how you retry a paused database.
+system clipboard.
+
+`r` refreshes **both halves of the layout**, and every buffer the plugin paints
+binds it, so it does the same thing from either window. In the tree it drops
+the cached database list and fetches it again; on a database node it also drops
+that database's schema and rows and clears a recorded pause, which is how you
+retry a paused database. In the content window it re-runs whichever view is
+showing — the grid refetches the page it is on (keeping the page, dropping the
+sort, because those rows are being replaced), the schema and reducers views ask
+for the schema again, and the log view asks for its backlog again, restarting a
+follow and keeping the level you had narrowed to. A content window still on the
+placeholder has nothing to refresh, and `r` is then the tree's alone. Between
+them, `r` is the one keystroke between what is on screen and a module you have
+just republished.
 
 `r` puts the cursor back on the node it was pressed on once the new tree has
 been painted, even though the tree was replaced from the top in between. If the
@@ -457,6 +470,7 @@ In the content window *while it is showing a grid*:
 | `y`     | Yank the cell under the cursor, untruncated              |
 | `Y`     | Yank the whole row as JSON                               |
 | `K`     | Float the whole row, every column untruncated            |
+| `r`     | Refresh: refetch this page, and the tree                 |
 | `q`     | Close the layout                                         |
 | `<Tab>` | Move to the other window of the layout                   |
 
@@ -473,6 +487,7 @@ In the content window *while it is showing logs*:
 | ------- | -------------------------------------- |
 | `>`     | Show only more severe log levels       |
 | `<`     | Show less severe log levels too        |
+| `r`     | Refresh: ask for the backlog again     |
 | `q`     | Close the layout                       |
 | `<Tab>` | Move to the other window of the layout |
 
@@ -482,16 +497,18 @@ In the content window *while it is showing a schema or a reducer list*:
 
 | Key     | Does                                   |
 | ------- | -------------------------------------- |
+| `r`     | Refresh: re-request the schema         |
 | `q`     | Close the layout                       |
 | `<Tab>` | Move to the other window of the layout |
 
 The content window is shared by the four views, so each set of keys is
-unbound when another view takes the buffer over. `q` and `<Tab>` are common to
-all four — and to the sidebar — because the sidebar and the content window are
-one thing: closing either closes both, whichever window you press it in, and
-`<Tab>` crosses between them in either direction (there are two windows, so
-there is nothing for a `<S-Tab>` to do). The schema and reducers views bind
-nothing else: they are text, with nothing to page, sort or filter.
+unbound when another view takes the buffer over. `q`, `<Tab>` and `r` are
+common to all four — and to the sidebar — because the sidebar and the content
+window are one thing: closing either closes both, whichever window you press it
+in, `<Tab>` crosses between them in either direction (there are two windows, so
+there is nothing for a `<S-Tab>` to do), and `r` refreshes both at once. The
+schema and reducers views bind nothing else: they are text, with nothing to
+page, sort or filter.
 
 In most terminals `<Tab>` is the same keystroke as `<C-i>`, so this mapping
 shadows jump-forward — but buffer-locally, in the plugin's two buffers only,

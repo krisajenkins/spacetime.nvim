@@ -130,7 +130,10 @@ M.KEYMAPS = {
 		end,
 	},
 	-- Shared with the sidebar and the grid: the layout is one thing, so `q` closes
-	-- it and `<Tab>` crosses it from either window.
+	-- it, `<Tab>` crosses it and `r` refreshes both halves of it from either
+	-- window. `r` here re-asks for the backlog and restarts a follow; `<` and `>`
+	-- never send anything.
+	require("spacetime.ui.keys").REFRESH,
 	require("spacetime.ui.keys").CLOSE,
 	require("spacetime.ui.keys").FOCUS,
 }
@@ -166,6 +169,7 @@ local LEVEL_HL = {
 ---@field database string Database name or identity, as it goes in the URL path.
 ---@field num_lines? integer Backlog to ask for. Defaults to the configured value.
 ---@field follow? boolean Keep the connection open and stream. What `!` means.
+---@field min_level? string Least severe level to show. Only |spacetime.ui.logs.refresh()| sets it.
 
 ---The request plus what has become of it.
 ---@class SpacetimeLogsView : SpacetimeLogsRequest
@@ -596,6 +600,7 @@ function M.open(request)
 	vim.validate("database", request.database, "string")
 	vim.validate("num_lines", request.num_lines, "number", true)
 	vim.validate("follow", request.follow, "boolean", true)
+	vim.validate("min_level", request.min_level, "string", true)
 
 	if request.database == "" then
 		-- A name we cannot fetch anything by is data, not a programming error.
@@ -629,8 +634,10 @@ function M.open(request)
 		entries = {},
 		-- A fresh view starts unfiltered. Carrying the last view's minimum over
 		-- would mean a `:SpacetimeLogs` that quietly hid most of another
-		-- database's log, with only the badge to say why.
-		min_level = M.DEFAULT_MIN_LEVEL,
+		-- database's log, with only the badge to say why. `M.refresh` is the one
+		-- caller that asks for a minimum, because it is re-opening the view the
+		-- user is already looking at rather than opening another one.
+		min_level = request.min_level or M.DEFAULT_MIN_LEVEL,
 	}
 
 	require("spacetime.ui.buffer").claim_content(M.OWNER)
@@ -699,6 +706,34 @@ function M.stop()
 	end
 	M.render()
 	require("spacetime.logger").info(("stopped following %s's logs"):format(database))
+end
+
+---Ask for the backlog again, and restart a follow that was running.
+---
+---What `r` reaches through |spacetime.ui.content.refresh()| to do here. There is
+---no cache to drop — the logs endpoint is never served from one, see point 4 of
+---the module header — so this is `M.open` again with the request the view was
+---built from, which supersedes whatever is in flight for the database and starts
+---the entries over.
+---
+---The level filter is the one thing carried across. It is the user's reading of
+---this view rather than anything the server said, and a refresh that silently
+---widened it back to `Trace` would bury the lines they had narrowed down to.
+---@return boolean refreshed False when no logs have been opened yet.
+function M.refresh()
+	local current = view
+	if current == nil then
+		return false
+	end
+
+	M.open({
+		connection = current.connection,
+		database = current.database,
+		num_lines = current.num_lines,
+		follow = current.follow,
+		min_level = current.min_level,
+	})
+	return true
 end
 
 return M

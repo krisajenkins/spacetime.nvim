@@ -92,6 +92,7 @@ lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
   value.lua                    a SATS value plus its AlgebraicType, rendered
 lua/spacetime/ui/              buffers, windows, keymaps
   buffer.lua                   scratch buffers, the layout, and the one write
+  content.lua                  which of the four views the content window holds
   detail.lua                   the schema fetch the two detail views share
   grid.lua                     row-grid layout: columns and cells -> lines + spans
   highlights.lua               default highlight groups (all `default` links)

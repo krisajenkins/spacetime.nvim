@@ -626,7 +626,7 @@ reducer canonically instead (|spacetime-reducers-names|), because a signature
 reads as a call rather than as a label.
 
 Nothing in this view is truncated, and the only keys it binds are the shared
-`q` and `<Tab>` (|spacetime-keys-shared|).
+`q`, `<Tab>` and `r` (|spacetime-keys-shared|).
 
 THE REDUCERS VIEW                                    *spacetime-reducers-view*
 
@@ -666,7 +666,7 @@ means "assume callable", because labelling every reducer `Private` would be a
 claim about your module rather than a report of what the server said.
 
 Nothing in this view is truncated either, and the only keys it binds are the
-shared `q` and `<Tab>` (|spacetime-keys-shared|).
+shared `q`, `<Tab>` and `r` (|spacetime-keys-shared|).
 
 ==============================================================================
 6. KEYMAPS                                                 *spacetime-keymaps*
@@ -683,7 +683,7 @@ you can hang your own autocommands or mappings off it: >
     R           show the reducers of the database the cursor is in
     gl          show the logs of the database the cursor is in
     gL          follow those logs live
-    r           refresh: drop the cache and fetch again
+    r           refresh: drop the cache and fetch both halves again
     q           close the layout
     <Tab>       move to the other window of the layout
     y           yank the node's name
@@ -714,11 +714,27 @@ and `L` keep their usual meanings in the tree.
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
 system clipboard.
 
-`r` drops the cached database list and fetches it again. On a database node it
-also drops that database's own cached schema and rows, and clears a recorded
-pause — the cache has no expiry, so this is how you ask for fresh data, and
-how you retry a database that was paused. A database still expanded is
-refilled by the same keystroke.
+`r` refreshes BOTH halves of the layout, and it is bound in every buffer the
+plugin paints, so it does the same thing from either window
+(|spacetime-keys-shared|).
+
+In the tree, it drops the cached database list and fetches it again. On a
+database node it also drops that database's own cached schema and rows, and
+clears a recorded pause — the cache has no expiry, so this is how you ask for
+fresh data, and how you retry a database that was paused. A database still
+expanded is refilled by the same keystroke.
+
+In the content window, whichever of the four views is showing is re-run: the
+grid refetches the page it is on (keeping the page, dropping the sort, because
+the rows it was over are being replaced), the schema and reducers views ask for
+the schema again, and the log view asks for its backlog again — restarting the
+stream if it was following, and keeping the level you had narrowed to. A
+content window still showing the placeholder has nothing to refresh, and `r`
+is then the tree's alone.
+
+Together they are what a republished module looks like from in here: `r` is
+the one keystroke between the schema, the rows and the reducers on screen and
+the ones on the server.
 
 The refetch replaces the whole tree — briefly there is nothing on screen but a
 `loading…` line — so `r` remembers WHAT was under the cursor rather than which
@@ -754,13 +770,15 @@ In the content window while it is showing a grid: >
     y           yank the cell under the cursor, untruncated
     Y           yank the row as JSON
     K           show the whole row, every column untruncated
+    r           refresh: drop the cache and fetch both halves again
     q           close the layout
     <Tab>       move to the other window of the layout
 <
 See |spacetime-grid-sort|, |spacetime-grid-paging| and |spacetime-grid-yank|.
-`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared|. In the `K`
-float `q` is a mapping in the float's own buffer, so there it closes the float
-instead; the float binds no `<Tab>` at all.
+`q`, `<Tab>` and `r` are the shared keys — see |spacetime-keys-shared|; `r`
+here refetches the page on screen as well as the tree. In the `K` float `q` is
+a mapping in the float's own buffer, so there it closes the float instead; the
+float binds neither `<Tab>` nor `r` at all.
 
 LOGS                                                     *spacetime-keys-logs*
 
@@ -768,11 +786,12 @@ In the content window while it is showing logs: >
 
     >           show only more severe log levels
     <           show less severe log levels too
+    r           refresh: drop the cache and fetch both halves again
     q           close the layout
     <Tab>       move to the other window of the layout
 <
-`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared|. The other
-two narrow and widen what is shown: `>` raises the minimum level by one step,
+`q`, `<Tab>` and `r` are the shared keys — see |spacetime-keys-shared|. The
+other two narrow and widen what is shown: `>` raises the minimum level by one step,
 `<` lowers it. >
 
     Trace  →  Debug  →  Info  →  Warn  →  Error
@@ -788,6 +807,12 @@ level brings back what it was hiding; while following, the stream is neither
 restarted nor re-requested, and lines arriving afterwards respect the filter
 as they land.
 
+`r` is the one key here that does send a request: it asks for the backlog
+again, restarting the stream if the view was following. The level you have
+narrowed to survives it — a refresh that silently widened back to `Trace`
+would bury the lines you were watching — and everything the old stream had
+kept goes, because they are the lines it is replacing.
+
 Both keys stop at the ends rather than wrapping, so leaning on one cannot tip
 over and bury the line you were narrowing in on. There is no `Panic` step — a
 panic outranks an error, so `Error` keeps it anyway. A level the server
@@ -799,13 +824,15 @@ SCHEMA AND REDUCERS      *spacetime-keys-schema* *spacetime-keys-reducers*
 
 In the content window while it is showing a schema or a reducer list: >
 
+    r           refresh: drop the cache and fetch both halves again
     q           close the layout
     <Tab>       move to the other window of the layout
 <
-`q` and `<Tab>` are the shared keys — see |spacetime-keys-shared| — and they
-are the only keys either view binds: both are text, with nothing to page, sort
-or filter. The sidebar's `s` and `R` are what open them, and those are mappings
-in the sidebar buffer rather than in this one.
+`q`, `<Tab>` and `r` are the shared keys — see |spacetime-keys-shared| — and
+they are the only keys either view binds: both are text, with nothing to page,
+sort or filter, and `r` re-requests the schema they are both a reading of. The
+sidebar's `s` and `R` are what open them, and those are mappings in the sidebar
+buffer rather than in this one.
 
                                                        *spacetime-keys-shared*
 The content window is shared by the four views, so each set of keys is
@@ -813,14 +840,14 @@ unbound when another view takes the buffer over, and put back with the next
 one you open. A `]p` left behind could otherwise page a grid that is no longer
 on screen.
 
-`q` and `<Tab>` are the two keys all four bind, and the sidebar binds them
-too: the sidebar and the content window are one thing, so closing either closes
-both, whichever window you press it in, and `<Tab>` moves between them from
-either side. One key rather than a `<Tab>`/`<S-Tab>` pair, because there are
-exactly two windows — from either one, "the other" is unambiguous. If the
-counterpart is not on screen, `<Tab>` says so and nothing moves. The schema and
-reducers views bind nothing else: both are text, with nothing to page, sort or
-filter.
+`q`, `<Tab>` and `r` are the three keys all four bind, and the sidebar binds
+them too: the sidebar and the content window are one thing, so closing either
+closes both, whichever window you press it in, `<Tab>` moves between them from
+either side, and `r` refreshes both at once from either side. One `<Tab>`
+rather than a `<Tab>`/`<S-Tab>` pair, because there are exactly two windows —
+from either one, "the other" is unambiguous. If the counterpart is not on
+screen, `<Tab>` says so and nothing moves. The schema and reducers views bind
+nothing else: both are text, with nothing to page, sort or filter.
 
 In most terminals `<Tab>` arrives as `<C-i>`, so this mapping shadows
 |CTRL-I|'s jump forward. It is buffer-local, like every mapping here, so it

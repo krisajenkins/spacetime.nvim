@@ -300,6 +300,26 @@ T["a schema the session already has costs no request"] = function()
 	expect.equality(schema_requests(), 1)
 end
 
+-- ...and `r` is what makes it cost one again. The cache has no expiry, so
+-- without this a module republished under the editor would never reach the
+-- screen, however many times the view was reopened.
+T["r drops the cached schema and asks for it again"] = function()
+	serve_schema(read("schema_v10.json"))
+	child.lua([[ vim.cmd('SpacetimeSchema spacegym.security') ]])
+	expect.equality(content_lines()[1], "security")
+	expect.equality(schema_requests(), 1)
+
+	-- Pressed in the content window, where the schema view binds it as one of the
+	-- three shared keys.
+	child.lua([[ vim.api.nvim_set_current_win(B.window_showing(B.find('spacetime://content'))) ]])
+	-- The module has been republished, and it no longer has a `security` table.
+	serve_schema('{"typespace":{"types":[]},"tables":[{"name":"widget"}]}')
+	child.type_keys("r")
+
+	expect.equality(schema_requests(), 2)
+	expect.equality(content_lines(), { "error: spacegym has no table or view called security" })
+end
+
 -- One key means one request, so `:SpacetimeSchema` can supersede a fetch the
 -- sidebar started. The answer lands in the shared cache either way, and the tree
 -- must not be left reading `loading…` for a request that was taken over.
@@ -347,19 +367,19 @@ T["taking the buffer from the row grid leaves none of its keymaps behind"] = fun
 	serve_schema(read("schema_v10.json"))
 
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeSchema spacegym.security') ]])
 
 	expect.equality(content_lines()[1], "security")
 	-- Not one of the grid's keys is left on the buffer: a stale `]p` must not page
-	-- a grid that is no longer displayed. The shared `q` and `<Tab>` stay, because
-	-- every buffer in the layout binds them.
-	expect.equality(content_keys(), { "<Tab>", "q" })
+	-- a grid that is no longer displayed. The shared `q`, `<Tab>` and `r` stay,
+	-- because every buffer in the layout binds them.
+	expect.equality(content_keys(), { "<Tab>", "q", "r" })
 
 	-- And going back to the grid binds them again.
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 end
 
 --------------------------------------------------------------------------------

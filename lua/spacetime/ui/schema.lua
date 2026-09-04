@@ -52,7 +52,11 @@ M.OWNER = "schema"
 ---not in this one.) Applying them on every render is also what *unbinds* the row
 ---grid's keys — see point 4 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = { require("spacetime.ui.keys").CLOSE, require("spacetime.ui.keys").FOCUS }
+M.KEYMAPS = {
+	require("spacetime.ui.keys").REFRESH,
+	require("spacetime.ui.keys").CLOSE,
+	require("spacetime.ui.keys").FOCUS,
+}
 
 local LOADING = "loading…"
 
@@ -314,7 +318,8 @@ end
 ---
 ---What `:SpacetimeSchema` does. The schema is cached per database for the
 ---session, so a database already expanded in the sidebar renders without a
----request; `r` on the sidebar is the only thing that expires it.
+---request; `r` — see |spacetime.ui.schema.refresh()| — is the only thing that
+---expires it.
 ---@param request SpacetimeSchemaRequest
 function M.open(request)
 	vim.validate("request", request, "table")
@@ -359,6 +364,35 @@ function M.open(request)
 
 	M.render()
 	fetch(view)
+end
+
+---Re-request the schema behind the view, and repaint it.
+---
+---What `r` reaches through |spacetime.ui.content.refresh()| to do here. The
+---cache entry goes first: it is keyed by database and has no TTL, so a refresh
+---that read it would re-render the schema it is meant to replace — and dropping
+---it is also what makes `r` the way to see a module you have just republished.
+---
+---The table is kept, because the view is *this table's* schema and a refresh is
+---the same view again. If the republished module no longer has it, the fresh
+---schema says so in the buffer, which is the honest answer.
+---@return boolean refreshed False when no schema has been opened yet.
+function M.refresh()
+	local current = view
+	if current == nil then
+		return false
+	end
+
+	local state = require("spacetime.state")
+	state.cache_invalidate(state.key("schema", current.database))
+
+	current.status = "loading"
+	current.error = nil
+	current.schema = nil
+
+	M.render()
+	fetch(current)
+	return true
 end
 
 return M

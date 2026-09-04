@@ -497,6 +497,29 @@ T["a static open stops the follow it replaces"] = function()
 	expect.equality(badge(), "spacegym · 1 line · asked for 200 · level ≥ Trace")
 end
 
+-- `r` on a live follow is a restart, not a second stream alongside the first:
+-- `M.open` tears the old one down before it asks, so the one-flush-timer
+-- invariant holds across a refresh.
+T["r restarts a live follow rather than running two"] = function()
+	child.lua([[ vim.cmd('SpacetimeLogs! spacegym') ]])
+	child.lua([[ FEED_LINES(2) ]])
+	expect.equality(child.lua_get([[FLUSHED(2, ...)]], { PATIENCE }), true)
+
+	focus_content()
+	child.type_keys("r")
+
+	expect.equality(child.lua_get([[KILLED]]), 1)
+	expect.equality(child.lua_get([[#STREAMED]]), 2)
+	-- Still a follow, over the same query string as the one it replaced.
+	expect.equality(streamed(2), streamed(1))
+	expect.equality(child.lua_get([[vim.tbl_count(STATE.data.inflight)]]), 1)
+
+	-- And it is the new stream that fills the buffer: the old lines went with it.
+	child.lua([[ FEED_LINES(1) ]])
+	expect.equality(child.lua_get([[FLUSHED(1, ...)]], { PATIENCE }), true)
+	expect.equality(badge(), "spacegym · 1 line · asked for 200 · level ≥ Trace · following")
+end
+
 T[":SpacetimeLogsStop says so when nothing is running"] = function()
 	child.lua([[ vim.cmd('SpacetimeLogsStop') ]])
 

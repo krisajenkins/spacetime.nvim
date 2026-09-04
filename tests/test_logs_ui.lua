@@ -339,6 +339,31 @@ T["> raises the minimum level and < brings the hidden lines back, with no new re
 	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
 end
 
+-- `r` is the other half of the same rule. The filter is a display rule and sends
+-- nothing; a refresh is a request and sends everything again — and the level the
+-- user narrowed to has to survive it, or a refresh would silently bury the lines
+-- they were watching.
+T["r asks for the backlog again and keeps the level filter"] = function()
+	child.lua([[ BODY = ... ]], { MIXED })
+	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
+	focus_content()
+	child.type_keys(">")
+	child.type_keys(">")
+	child.type_keys(">")
+	expect.equality(messages(), { "warn", "error", "panic" })
+	expect.equality(request_count(), 1)
+
+	child.type_keys("r")
+
+	-- A second request, for the same backlog as the first: there is no cache to
+	-- drop here, so a refresh is simply the same view asked for again.
+	expect.equality(request_count(), 2)
+	expect.equality(streamed(2), streamed(1))
+	expect.equality(messages(), { "warn", "error", "panic" })
+	expect.equality(content_lines()[1], "spacegym · 3 of 7 lines · asked for 200 · level ≥ Warn")
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
 T["the badge names the minimum, and says how many lines it is hiding"] = function()
 	child.lua([[ BODY = ... ]], { MIXED })
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
@@ -451,19 +476,19 @@ end
 
 T["switching to the logs and back leaves no stale keymaps"] = function()
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeLogs spacegym') ]])
-	-- The log view's own two keys plus the shared `q` and `<Tab>`, and not one of
-	-- the grid's: a stale `]p` must not page a grid that is no longer displayed.
-	-- Neovim reports a `<` mapping's left-hand side as `<lt>`, which is the same
-	-- key.
-	expect.equality(content_keys(), { "<Tab>", "<lt>", ">", "q" })
+	-- The log view's own two keys plus the three shared ones — `q`, `<Tab>` and
+	-- `r` — and not one of the grid's: a stale `]p` must not page a grid that is
+	-- no longer displayed. Neovim reports a `<` mapping's left-hand side as
+	-- `<lt>`, which is the same key.
+	expect.equality(content_keys(), { "<Tab>", "<lt>", ">", "q", "r" })
 	expect.equality(#entry_lines(), 11)
 
 	-- And going back to the grid binds them again, over the logs.
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 	expect.equality(content_lines()[1]:find("1 row", 1, true) ~= nil, true)
 end
 
@@ -489,7 +514,7 @@ T["a log response that lands after the rows view took the buffer is dropped"] = 
 
 	-- The grid is still on screen, and the log lines went nowhere near it.
 	expect.equality(content_lines()[1]:find("1 row", 1, true) ~= nil, true)
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 end
 
 return T

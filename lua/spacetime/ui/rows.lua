@@ -32,8 +32,9 @@
 --    line of text rather than a stack trace under the cursor.
 -- 4. **The result is cached under the same key the request registers with.**
 --    `state.key("rows", db, table)` is both the in-flight key and the cache key,
---    so re-opening a table is a table lookup, and `r` on the sidebar drops it
---    through `state.cache_invalidate_db` along with the schema it belongs to.
+--    so re-opening a table is a table lookup, and `r` drops it — through
+--    `M.refresh` here, and through `state.cache_invalidate_db` when it was
+--    pressed on the database in the tree.
 -- 5. **The whole view is one table, rebuilt on open and repainted from.** Sort
 --    and paging change `view` and call `M.render()`; neither needs to know
 --    anything about buffers. `view.limit` and `view.offset` are already what
@@ -681,9 +682,11 @@ M.KEYMAPS = {
 		end,
 	},
 	-- Shared with the sidebar and the log view: the layout is one thing, so `q`
-	-- closes it and `<Tab>` crosses it from either window. The `K` float's own `q`
-	-- is a mapping in the float's buffer, so it still wins there and still only
-	-- closes the float; the float binds no `<Tab>` at all.
+	-- closes it, `<Tab>` crosses it and `r` refreshes both halves of it from
+	-- either window. The `K` float's own `q` is a mapping in the float's buffer,
+	-- so it still wins there and still only closes the float; the float binds
+	-- neither `<Tab>` nor `r` at all.
+	require("spacetime.ui.keys").REFRESH,
 	require("spacetime.ui.keys").CLOSE,
 	require("spacetime.ui.keys").FOCUS,
 }
@@ -795,8 +798,8 @@ end
 ---Fetch and render a table's — or a view's — rows in the content window.
 ---
 ---What `<CR>` on a table node does. Idempotent in the useful sense: opening the
----same table twice serves the second one from the session cache, and `r` on the
----sidebar is the only thing that expires it.
+---same table twice serves the second one from the session cache, and `r` — see
+---|spacetime.ui.rows.refresh()| — is the only thing that expires it.
 ---@param request SpacetimeRowsRequest
 function M.open(request)
 	vim.validate("request", request, "table")
@@ -859,6 +862,37 @@ function M.open(request)
 
 	M.render()
 	fetch(view)
+end
+
+---Refetch the page on screen, and repaint it.
+---
+---One half of what `r` does — see |spacetime.ui.content.refresh()| for the other
+---— and the only thing in this file that expires the cache. A grid the user has
+---been looking at for a while is exactly as old as the moment it was fetched:
+---the session cache has no TTL, so without the invalidation below a refresh
+---would be answered from it and paint the same rows again.
+---
+---The page is kept and the sort is not. The offset is where the user has got to
+---and re-reading it is the whole point; the sort is a reading of rows that are
+---about to be replaced, which is the same reason `M.page` drops it.
+---@return boolean refreshed False when no grid has been opened yet.
+function M.refresh()
+	local current = view
+	if current == nil then
+		return false
+	end
+
+	local state = require("spacetime.state")
+	state.cache_invalidate(state.key("rows", current.database, current.table_name))
+
+	current.status = "loading"
+	current.error = nil
+	current.result = nil
+	reset_order(current)
+
+	M.render()
+	fetch(current)
+	return true
 end
 
 return M

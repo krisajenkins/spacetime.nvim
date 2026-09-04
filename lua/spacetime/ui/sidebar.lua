@@ -632,14 +632,30 @@ function M.reconnect()
 	fetch()
 end
 
----Refetch the database list, cache and all. What `r` does.
+---Refetch everything on screen, cache and all. What `r` does, from either
+---window.
 ---
----On a database node the database's own cache goes too — a `rows:` key embeds
----its database, so refreshing it has to drop its dependents — and so does what
----the last schema request concluded. That is the whole of the retry story for a
----paused database: it is never asked again on its own, and `r` is how you ask
----once it has woken up. The list fetch that follows re-requests the schema of
----everything still expanded.
+---Two halves, because the layout is two windows onto the same server and there
+---is no reading of `r` under which one of them should stay stale:
+---
+--- 1. **The tree.** The database list is refetched. On a database node the
+---    database's own cache goes too — a `rows:` key embeds its database, so
+---    refreshing it has to drop its dependents — and so does what the last schema
+---    request concluded. That is the whole of the retry story for a paused
+---    database: it is never asked again on its own, and `r` is how you ask once it
+---    has woken up. The list fetch that follows re-requests the schema of
+---    everything still expanded.
+--- 2. **The content window.** |spacetime.ui.content.refresh()| re-runs whichever
+---    of the four views is showing — the grid refetches its page, the two detail
+---    views re-request the schema, the log view asks for its backlog again — and
+---    does nothing at all when the window is still on the placeholder.
+---
+---The content window goes first, and the order is load-bearing rather than
+---cosmetic: the schema view and the sidebar's own expansion fetch share the
+---`schema:<db>` key, and `fetch_schema` skips a database whose request is already
+---in flight. Refreshing the view first therefore leaves the tree to be filled in
+---by the response the view is already waiting for, rather than the two of them
+---superseding each other for the same schema.
 ---
 ---The node under the cursor is also what the cursor comes back to once the new
 ---tree has been painted — see point 8 of the module header. It is recorded by
@@ -665,6 +681,7 @@ function M.refresh()
 	end
 	state.cache_invalidate(databases_key())
 
+	require("spacetime.ui.content").refresh()
 	fetch()
 end
 
@@ -1006,15 +1023,11 @@ M.KEYMAPS = {
 			M.logs(true)
 		end,
 	},
-	{
-		keys = { "r" },
-		desc = "refresh: drop the cache and fetch again",
-		action = function()
-			M.refresh()
-		end,
-	},
-	-- Shared with the content window, so `q` and `<Tab>` mean the same thing from
-	-- either half of the layout.
+	-- Shared with the content window, so `r`, `q` and `<Tab>` mean the same thing
+	-- from either half of the layout. `r` is defined there rather than here even
+	-- though `M.refresh` is what it calls: the four content views bind it too, and
+	-- one table entry is what stops the sidebar's `?` and their help drifting apart.
+	require("spacetime.ui.keys").REFRESH,
 	require("spacetime.ui.keys").CLOSE,
 	require("spacetime.ui.keys").FOCUS,
 	{

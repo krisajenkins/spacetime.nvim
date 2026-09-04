@@ -842,4 +842,88 @@ T["<Tab> from the grid moves back to the sidebar"] = function()
 	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
 end
 
+--------------------------------------------------------------------------------
+-- Refreshing
+--------------------------------------------------------------------------------
+
+-- The session cache has no expiry, so `r` is the only way rows on screen ever
+-- become the rows on the server. Both halves of the layout bind it, and both
+-- have to refetch the grid — the tree alone is the half the user was not looking
+-- at.
+
+T["r in the grid refetches the page and repaints it"] = function()
+	serve_sql('"alpha"', 200, one_column("alpha_id", "before"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+	expect.equality(content_lines()[3], "before")
+
+	-- The server has moved on. Without the invalidation the cache would answer
+	-- this refetch with the rows it is meant to replace.
+	child.lua([[ SQL = {} ]])
+	serve_sql('"alpha"', 200, one_column("alpha_id", "after"))
+	child.type_keys("r")
+
+	expect.equality(content_lines()[3], "after")
+	expect.equality(child.lua_get([[QUERIES[2] ]]), 'SELECT * FROM "alpha" LIMIT 100')
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["r keeps the page the grid was on"] = function()
+	serve_sql('"alpha"', 200, page_of(100, "one"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	focus_content()
+
+	child.lua([[ SQL = {} ]])
+	serve_sql("OFFSET 100", 200, page_of(100, "two"))
+	child.type_keys("]p")
+	expect.equality(content_lines()[3], "two 1")
+
+	-- Page two is where the user is, so page two is what is re-asked for: an `r`
+	-- that dropped them back to the top would lose their place in the table.
+	child.lua([[ SQL = {} ]])
+	serve_sql("OFFSET 100", 200, page_of(100, "later"))
+	child.type_keys("r")
+
+	expect.equality(child.lua_get([[QUERIES[3] ]]), 'SELECT * FROM "alpha" LIMIT 100 OFFSET 100')
+	expect.equality(content_lines()[1], "100 rows · offset 100 · 42µs")
+	expect.equality(content_lines()[3], "later 1")
+end
+
+T["r in the sidebar refreshes the grid as well as the tree"] = function()
+	serve_sql('"alpha"', 200, one_column("alpha_id", "before"))
+	expand_to(2)
+	child.type_keys("<CR>")
+	-- The cursor stays in the sidebar: same key, same two refetches.
+	expect.equality(child.lua_get([[vim.api.nvim_buf_get_name(0)]]), "spacetime://sidebar")
+
+	child.lua([[ SQL = {} ]])
+	serve_sql('"alpha"', 200, one_column("alpha_id", "after"))
+	child.type_keys("r")
+
+	expect.equality(content_lines()[3], "after")
+	-- And the tree really was refetched too, rather than only the grid.
+	expect.equality(
+		child.lua_get([[#vim.tbl_filter(function(url) return url:find('/names', 1, true) ~= nil end, REQUESTS)]]),
+		2
+	)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
+T["r before anything has been opened refreshes the tree and says nothing"] = function()
+	expand_to(2)
+	local before = child.lua_get([[#REQUESTS]])
+
+	-- The content window is still on the placeholder, so there is no data view to
+	-- refresh and `r` is the tree's alone.
+	expect.no_error(function()
+		child.type_keys("r")
+	end)
+
+	expect.equality(content_lines(), child.lua_get([[require('spacetime.ui.sidebar').PLACEHOLDER]]))
+	expect.equality(child.lua_get([[#REQUESTS]]) > before, true)
+	expect.equality(#child.lua_get([[NOTIFIED]]), 0)
+end
+
 return T

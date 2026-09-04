@@ -345,8 +345,30 @@ T["r still refreshes rather than opening the reducers"] = function()
 	child.type_keys("r")
 
 	expect.equality(child.lua_get([[#REQUESTS]]) > before, true)
-	-- The content window is untouched: `r` is not a view key.
+	-- The content window is still on the placeholder, so `r` had no view to
+	-- refresh alongside the tree and left it alone.
 	expect.equality(content_lines(), child.lua_get([[require('spacetime.ui.sidebar').PLACEHOLDER]]))
+end
+
+-- And once there *is* a view, the same key refreshes it too: the schema behind
+-- the reducer list is cached with no expiry, so `r` is how a republished module
+-- reaches the screen.
+T["r re-requests the schema behind the reducer list"] = function()
+	serve_schema(read("schema_v10.json"))
+	child.lua([[ vim.cmd('SpacetimeReducers spacegym') ]])
+	expect.equality(content_lines()[1], "spacegym")
+	expect.equality(schema_requests(), 1)
+
+	-- Pressed in the content window, where the reducers view binds it as one of
+	-- the three shared keys.
+	child.lua([[ vim.api.nvim_set_current_win(B.window_showing(B.find('spacetime://content'))) ]])
+	serve_schema('{"typespace":{"types":[]},"tables":[]}')
+	child.type_keys("r")
+
+	expect.equality(schema_requests(), 2)
+	-- The republished module has none, and the view says so rather than showing
+	-- the list it had cached.
+	expect.equality(content_lines(), { "spacegym", "0 reducers · schema v9", "", "Reducers", "  (none)" })
 end
 
 --------------------------------------------------------------------------------
@@ -374,15 +396,15 @@ T["taking the buffer from the row grid leaves none of its keymaps behind"] = fun
 	serve_schema(read("schema_v10.json"))
 
 	child.lua([[ vim.cmd('SpacetimeRows spacegym.security') ]])
-	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "s", "y" })
+	expect.equality(content_keys(), { "<Tab>", "K", "Y", "[p", "]p", "q", "r", "s", "y" })
 
 	child.lua([[ vim.cmd('SpacetimeReducers spacegym') ]])
 
 	expect.equality(content_lines()[1], "spacegym")
 	-- Not one of the grid's keys is left on the buffer: a stale `]p` must not page
-	-- a grid that is no longer displayed. The shared `q` and `<Tab>` stay, because
-	-- every buffer in the layout binds them.
-	expect.equality(content_keys(), { "<Tab>", "q" })
+	-- a grid that is no longer displayed. The shared `q`, `<Tab>` and `r` stay,
+	-- because every buffer in the layout binds them.
+	expect.equality(content_keys(), { "<Tab>", "q", "r" })
 end
 
 T["q closes the layout from the reducers view"] = function()

@@ -46,7 +46,11 @@ M.OWNER = "reducers"
 ---mapping in the sidebar buffer, not in this one.) Applying them on every render
 ---is also what *unbinds* the row grid's keys — see point 4 of the module header.
 ---@type SpacetimeKeymap[]
-M.KEYMAPS = { require("spacetime.ui.keys").CLOSE, require("spacetime.ui.keys").FOCUS }
+M.KEYMAPS = {
+	require("spacetime.ui.keys").REFRESH,
+	require("spacetime.ui.keys").CLOSE,
+	require("spacetime.ui.keys").FOCUS,
+}
 
 local LOADING = "loading…"
 
@@ -186,7 +190,8 @@ end
 ---
 ---What `:SpacetimeReducers` does. The schema is cached per database for the
 ---session, so a database already expanded in the sidebar renders without a
----request; `r` on the sidebar is the only thing that expires it.
+---request; `r` — see |spacetime.ui.reducers.refresh()| — is the only thing that
+---expires it.
 ---@param request SpacetimeReducersRequest
 function M.open(request)
 	vim.validate("request", request, "table")
@@ -229,6 +234,32 @@ function M.open(request)
 
 	M.render()
 	fetch(view)
+end
+
+---Re-request the schema behind the view, and repaint it.
+---
+---What `r` reaches through |spacetime.ui.content.refresh()| to do here, and the
+---same three steps as the schema view's: drop the cache entry, which has no TTL
+---and would otherwise answer the refetch; go back to `loading…`; ask again. The
+---two views share the request (`ui/detail.lua`), so refreshing either one
+---refreshes the schema the other would have been served from.
+---@return boolean refreshed False when no reducer list has been opened yet.
+function M.refresh()
+	local current = view
+	if current == nil then
+		return false
+	end
+
+	local state = require("spacetime.state")
+	state.cache_invalidate(state.key("schema", current.database))
+
+	current.status = "loading"
+	current.error = nil
+	current.schema = nil
+
+	M.render()
+	fetch(current)
+	return true
 end
 
 return M

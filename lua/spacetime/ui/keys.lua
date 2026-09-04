@@ -13,10 +13,10 @@
 -- call put in the buffer comes off first, and a view whose only key is the
 -- shared `q` (the schema view) clears the buffer by asking for that alone.
 --
--- Two mappings are defined here rather than by a view: `M.CLOSE` and `M.FOCUS`.
--- Every buffer the plugin paints binds them, by listing them in its own
--- `KEYMAPS`, so the tables stay the single source of truth for the documentation
--- and for the sidebar's `?`.
+-- Three mappings are defined here rather than by a view: `M.CLOSE`, `M.FOCUS`
+-- and `M.REFRESH`. Every buffer the plugin paints binds them, by listing them in
+-- its own `KEYMAPS`, so the tables stay the single source of truth for the
+-- documentation and for the sidebar's `?`.
 --
 -- What was applied is tracked here rather than read back from Neovim, because
 -- `nvim_buf_get_keymap` cannot tell one of ours from one the user set: deleting
@@ -67,6 +67,30 @@ M.FOCUS = {
 		if not require("spacetime.ui.buffer").focus_other() then
 			require("spacetime.logger").warn("the other half of the layout is not open")
 		end
+	end,
+}
+
+---The third shared key: `r` refreshes both halves of the layout at once.
+---
+---The sidebar and the content window show two readings of the same server — the
+---tree is the metadata, the content window is the data — and there is no moment
+---at which refreshing one of them and leaving the other stale is what the user
+---meant. So `r` is bound in every buffer the plugin paints, it does the same
+---thing from all of them, and |spacetime.ui.sidebar.refresh()| is the one
+---function behind it: it drops the cached list (and, on a database node, that
+---database's own cache), refetches the tree, and asks
+---|spacetime.ui.content.refresh()| to re-run whatever the content window is
+---showing.
+---
+---Bound rather than left to the user's own `r` because both buffers are
+---unmodifiable scratch buffers: `r` in them replaces nothing, so the keystroke
+---was doing exactly nothing before it did this.
+---@type SpacetimeKeymap
+M.REFRESH = {
+	keys = { "r" },
+	desc = "refresh: drop the cache and fetch both halves again",
+	action = function()
+		require("spacetime.ui.sidebar").refresh()
 	end,
 }
 
