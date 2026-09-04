@@ -607,7 +607,13 @@ whether it is public, how many columns it has and which schema version the
 server answered with. Column types are resolved through the module's own
 typespace, so a reference reads as the name the module gave it and an
 unrecognised newtype is shown as the plain product it is rather than guessed
-at. `PK` marks the primary key and `autoinc` a sequence-backed column.
+at. `PK` marks the primary key and `autoinc` a sequence-backed column, and
+`default <value>` a column default. A default travels as SpacetimeDB's binary
+encoding rather than as JSON, and is decoded here and shown exactly as the row
+grid would show the same value: an `Option` default reads as `none`, not as
+the tag byte `01`. Where the bytes cannot be read against the column's type
+they are shown as hex with an `0x` on the front, so they are never mistaken
+for a number.
 
 A view can have neither indexes nor constraints, so those two sections are
 omitted for one entirely: only its title, its kind line and its columns are

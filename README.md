@@ -282,6 +282,11 @@ Where a name was written one way in the module and is spelled another way in
 SQL, both are shown — `ledgerEntry (ledger_entry)`. The SQL endpoint accepts
 either, so neither spelling is a trap.
 
+A column's flags are `PK`, `autoinc` and `default <value>`. A default travels
+as SpacetimeDB's binary encoding rather than as JSON, and is decoded here and
+shown exactly as the row grid would show the same value — an `Option` default
+reads as `none`, not as the tag byte `01`.
+
 Nothing in this view is truncated, and the only keys it binds are the shared
 `q`, `<Tab>` and `r`. The schema is the same one the sidebar caches, so
 describing a table in a database you have already expanded costs no request —

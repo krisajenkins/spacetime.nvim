@@ -79,6 +79,7 @@ lua/spacetime/state.lua        in-flight requests, sequence guard, timers, cache
 lua/spacetime/status.lua       :SpacetimeStatus — the resolved connection
 lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
   blake3.lua                   single-chunk BLAKE3 on LuaJIT's bit library
+  bsatn.lua                    hex-encoded BSATN -> the SATS shape value.lua renders
   client.lua                   one method per HTTP endpoint; cb(err, value) throughout
   clitoml.lua                  deliberately partial reader for the CLI's cli.toml
   http.lua                     the transport: request table -> curl -> response

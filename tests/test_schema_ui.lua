@@ -267,6 +267,45 @@ T["the reducers are not in the schema view at all"] = function()
 	end, content_marks()), 0)
 end
 
+T["a column default is decoded, not printed as its bytes"] = function()
+	-- The `person` table of a `simple-demo` module: `age` is an `Option<u16>`
+	-- whose default is `None`, which BSATN spells as the single byte `01`. Shown
+	-- raw that reads as the number one, which is the bug this case pins down.
+	serve_schema([[{
+		"typespace": {"types": [{"Product": {"elements": [
+			{"name": {"some": "name"}, "algebraic_type": {"String": []}},
+			{"name": {"some": "age"}, "algebraic_type": {"Sum": {"variants": [
+				{"name": {"some": "some"}, "algebraic_type": {"U16": []}},
+				{"name": {"some": "none"}, "algebraic_type": {"Product": {"elements": []}}}
+			]}}}
+		]}}]},
+		"tables": [{"name": "person", "product_type_ref": 0, "primary_key": [0]}],
+		"misc_exports": [{"ColumnDefaultValue": {"table": "person", "col_id": 1, "value": "01"}}]
+	}]])
+
+	child.lua([[ vim.cmd('SpacetimeSchema spacegym.person') ]])
+
+	local columns = section("Columns")
+	expect.equality(line_with(columns, "age"):find("default none", 1, true) ~= nil, true)
+	expect.equality(line_with(columns, "age"):find("default 01", 1, true), nil)
+end
+
+T["a column default that will not decode is shown as bytes, not as a number"] = function()
+	-- Two bytes where the type says one. Nothing here can be rendered honestly,
+	-- so the hex is shown with an `0x` marking it as the bytes it is.
+	serve_schema([[{
+		"typespace": {"types": [{"Product": {"elements": [
+			{"name": {"some": "flag"}, "algebraic_type": {"U8": []}}
+		]}}]},
+		"tables": [{"name": "person", "product_type_ref": 0}],
+		"misc_exports": [{"ColumnDefaultValue": {"table": "person", "col_id": 0, "value": "0102"}}]
+	}]])
+
+	child.lua([[ vim.cmd('SpacetimeSchema spacegym.person') ]])
+
+	expect.equality(line_with(section("Columns"), "flag"):find("default 0x0102", 1, true) ~= nil, true)
+end
+
 T["a v9 schema describes its table and no reducers either"] = function()
 	serve_v9(read("schema_v9.json"))
 

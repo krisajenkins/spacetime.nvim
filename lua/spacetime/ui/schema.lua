@@ -162,6 +162,23 @@ local function heading(sink, entry, schema)
 	sections.push(sink, table.concat(pieces, " · "))
 end
 
+---A column's default as display text.
+---
+---The wire carries it hex-encoded BSATN rather than as JSON, so it goes through
+---`lib/bsatn` before `lib/value` can render it the way the row grid renders the
+---same value. When the decode fails the raw hex is shown with an `0x` on the
+---front: unreadable, but marked as bytes rather than passed off as a number.
+---@param column SpacetimeSchemaColumn
+---@param schema SpacetimeSchema
+---@return string
+local function default_text(column, schema)
+	local decoded, err = require("spacetime.lib.bsatn").decode(column.default, column.type, schema)
+	if err ~= nil then
+		return "default 0x" .. column.default
+	end
+	return "default " .. (require("spacetime.lib.value").format(decoded, column.type, schema, { nested = true }))
+end
+
 ---@param sink SpacetimeSectionSink
 ---@param entry table
 ---@param schema SpacetimeSchema
@@ -178,7 +195,7 @@ local function columns_section(sink, entry, schema)
 			flags[#flags + 1] = "autoinc"
 		end
 		if type(column.default) == "string" then
-			flags[#flags + 1] = "default " .. column.default
+			flags[#flags + 1] = default_text(column, schema)
 		end
 		cells[i] = {
 			{ text = column.name, hl = column.is_primary_key and "SpacetimePrimaryKey" or nil },

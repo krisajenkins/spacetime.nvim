@@ -51,6 +51,7 @@ local M = {}
 ---@class SpacetimeValueOpts
 ---@field max_depth? integer Nesting, and `Ref` hops, before `…`. Default 12.
 ---@field max_elements? integer Array elements rendered before a final `…`. Default 32.
+---@field nested? boolean Render as if already inside a structure, so a string is quoted.
 
 ---@class spacetime.ValueCtx
 ---@field model any Normalised `{typespace = …}`, or `nil` when refs cannot be resolved.
@@ -1064,16 +1065,21 @@ end
 ---@param value any Decoded by `spacetime.lib.json`; `vim.NIL` is a JSON `null`.
 ---@param atype any Raw AlgebraicType, or `nil` for an untyped render.
 ---@param types? SpacetimeSchema|table[] The schema model, or a bare typespace array.
----@param opts? SpacetimeValueOpts
+---@param opts? SpacetimeValueOpts `nested` quotes a top-level string.
 ---@return string text
 ---@return string|nil hl `"SpacetimeNull"`, `"SpacetimeSpecial"`, or `nil`.
 function M.format(value, atype, types, opts)
 	local ctx = new_ctx(types, opts)
-	local ok, text, hl = pcall(render, value, atype, ctx, 0, 0)
+	-- A grid cell is the whole of its own line, so a bare string is unambiguous
+	-- there and the quotes would be noise. A value shown *inside* a line — a
+	-- column default among its other flags — has no such luxury: without quotes
+	-- an empty string default renders as nothing at all.
+	local depth = type(opts) == "table" and opts.nested and 1 or 0
+	local ok, text, hl = pcall(render, value, atype, ctx, depth, 0)
 	if ok and type(text) == "string" then
 		return text, hl
 	end
-	local safe, fallback = pcall(untyped, value, ctx, 0)
+	local safe, fallback = pcall(untyped, value, ctx, depth)
 	if safe and type(fallback) == "string" then
 		return fallback, nil
 	end
