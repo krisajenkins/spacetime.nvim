@@ -164,7 +164,10 @@ end
 
 T["an unrecognised section is ignored without error"] = function()
 	local value = decoded(10)
-	table.insert(value.sections, { Procedures = {} })
+	-- Both of these are real `RawModuleDefV10Section` variants we do not read.
+	-- The enum is `#[non_exhaustive]`, so this is the normal case rather than a
+	-- malformed payload, and it must cost nothing.
+	table.insert(value.sections, { HttpRoutes = {} })
 	table.insert(value.sections, { NotARealSection = { "x" } })
 
 	local parsed
@@ -173,6 +176,89 @@ T["an unrecognised section is ignored without error"] = function()
 	end)
 	expect.equality(#parsed.tables, 12)
 	expect.equality(#parsed.reducers, 19)
+end
+
+--------------------------------------------------------------------------------
+-- Procedures
+--------------------------------------------------------------------------------
+
+-- The captured module has no procedures — they are new enough that nothing we
+-- have pointed at uses one — so these are synthesised onto the fixture rather
+-- than captured. What they pin down is the *shape*, taken from
+-- `RawProcedureDefV10` in the 2.8.0 checkout: `source_name`, `params`, a single
+-- `return_type` where a reducer has the `ok`/`err` pair, and the same
+-- `FunctionVisibility` a reducer carries.
+local PROCEDURES = {
+	{
+		source_name = "sendEmail",
+		params = { elements = { { name = { some = "to" }, algebraic_type = { String = {} } } } },
+		return_type = { Bool = {} },
+		visibility = { ClientCallable = {} },
+	},
+	{
+		source_name = "purge_cache",
+		params = { elements = {} },
+		return_type = { Product = { elements = {} } },
+		visibility = { Private = {} },
+	},
+}
+
+---The v10 fixture with a `Procedures` section, and `sendEmail` renamed the way
+---the module's case-conversion policy would rename it.
+---@return table
+local function with_procedures()
+	local value = decoded(10)
+	table.insert(value.sections, { Procedures = vim.deepcopy(PROCEDURES) })
+	for _, section in ipairs(value.sections) do
+		if section.ExplicitNames ~= nil then
+			table.insert(section.ExplicitNames.entries, {
+				Function = { source_name = "sendEmail", canonical_name = "send_email" },
+			})
+		end
+	end
+	return value
+end
+
+T["v10 lifts the Procedures section"] = function()
+	local m = schema.parse(with_procedures())
+
+	expect.equality(#m.procedures, 2)
+	-- Sorted by canonical, like the tables, views and reducers: `purge_cache`
+	-- before `send_email`, which is not the order they were sent in.
+	expect.equality(m.procedures[1].canonical, "purge_cache")
+	expect.equality(m.procedures[2].canonical, "send_email")
+
+	local send = m.procedures[2]
+	-- The name map is shared with the reducers — `ExplicitNames` tags both kinds
+	-- `Function` — so a procedure gets its canonical spelling out of the same
+	-- half of it.
+	expect.equality(send.name, "sendEmail")
+	expect.equality(send.visibility, "ClientCallable")
+	expect.equality(#send.params, 1)
+	expect.equality(send.params[1].name, "to")
+	expect.equality(send.params[1].type, { String = {} })
+	-- One return type, not the `ok`/`err` pair a reducer carries.
+	expect.equality(send.return_type, { Bool = {} })
+	expect.equality(send.ok_return_type, nil)
+	expect.equality(send.err_return_type, nil)
+
+	-- The reducers are untouched by the new section.
+	expect.equality(#m.reducers, 19)
+end
+
+T["a Private procedure is parsed, not dropped"] = function()
+	local m = schema.parse(with_procedures())
+
+	expect.equality(m.procedures[1].visibility, "Private")
+	expect.equality(schema.is_callable(m.procedures[1]), false)
+	expect.equality(schema.is_callable(m.procedures[2]), true)
+end
+
+-- An empty list here means the module has none, never that the server did not
+-- say: unlike a reducer's visibility, there is nothing to be unknown about.
+T["neither version invents procedures"] = function()
+	expect.equality(model(10).procedures, {})
+	expect.equality(model(9).procedures, {})
 end
 
 T["ExplicitNames maps source to canonical"] = function()

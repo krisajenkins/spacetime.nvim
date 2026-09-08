@@ -1,6 +1,6 @@
 -- The fetch the two detail views share.
 --
--- `ui/schema.lua` and `ui/reducers.lua` are the same machine pointed at two
+-- `ui/schema.lua` and `ui/functions.lua` are the same machine pointed at two
 -- readings of one response: both want the database's schema, both want it under
 -- the same `state` key as everything else that asks, and both want the tree
 -- repainted afterwards. `ui/sections.lua` is where they share the *layout*; this
@@ -32,7 +32,7 @@ local M = {}
 ---What `M.fetch_schema` needs of a view, and what it writes back into one.
 ---
 ---Structural rather than a class either view inherits: `SpacetimeSchemaDisplay`
----and `SpacetimeReducersDisplay` are both already this, plus whatever else their
+---and `SpacetimeFunctionsDisplay` are both already this, plus whatever else their
 ---own layout wants.
 ---@class SpacetimeDetailDisplay
 ---@field connection SpacetimeConnection

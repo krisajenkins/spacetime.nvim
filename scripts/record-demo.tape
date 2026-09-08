@@ -81,6 +81,8 @@ Type "s"                          # sort by it — no refetch, only the paint or
 Sleep 2.4s
 Type "s"                          # again reverses
 Sleep 2.4s
+Type "1G"                         # Scroll to top
+Sleep 1.4s
 
 # --- Schema -------------------------------------------------------------------
 Tab                               # back to the sidebar, cursor still on the table
@@ -88,8 +90,8 @@ Sleep 700ms
 Type "s"                          # the same `s`, a different buffer: describe it
 Sleep 3.4s
 
-# --- Reducers -----------------------------------------------------------------
-Type "R"                          # the reducers of the database the cursor is in
+# --- Functions ----------------------------------------------------------------
+Type "F"                          # the functions of the database the cursor is in
 Sleep 3.6s
 
 # --- Close --------------------------------------------------------------------

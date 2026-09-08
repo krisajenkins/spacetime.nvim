@@ -6,6 +6,8 @@
 -- column defaults buried in `misc_exports`. v10 is the target because it is the
 -- only one that carries reducer **visibility** — on the real module 5 of 19
 -- reducers are `Private`, and a v9-based browser would offer all 19 as callable.
+-- It is also the only one that has **procedures** at all: v9 predates them, so
+-- `model.procedures` is unconditionally empty on that path rather than unknown.
 -- See ROADMAP.md, "Why schema v10 (with a v9 fallback)".
 --
 -- `M.parse` detects which arrived and produces the same model either way, so
@@ -15,7 +17,7 @@
 -- Three things this file exists to get right:
 --
 -- 1. **Unrecognised sections are skipped in silence.** `RawModuleDefV10Section`
---    is `#[non_exhaustive]` upstream and the checkout already has `Procedures`,
+--    is `#[non_exhaustive]` upstream and the checkout already has
 --    `HttpHandlers`, `HttpRoutes`, `ViewPrimaryKeys`, `Submodules` and
 --    `CaseConversionPolicy` queued up. Sections are bucketed by tag and then
 --    looked up by name, so a tag nobody asks for is never seen.
@@ -45,6 +47,7 @@ local M = {}
 ---@field tables SpacetimeSchemaTable[] Sorted by `canonical`.
 ---@field views SpacetimeSchemaView[] Sorted by `canonical`.
 ---@field reducers SpacetimeSchemaReducer[] Sorted by `canonical`.
+---@field procedures SpacetimeSchemaProcedure[] Sorted by `canonical`; **always empty on v9**.
 ---@field schedules SpacetimeSchemaSchedule[]
 ---@field lifecycle table<string,string> `"Init"`/`"OnConnect"`/`"OnDisconnect"` -> canonical function name.
 ---@field names SpacetimeSchemaNames
@@ -84,7 +87,9 @@ local M = {}
 ---@field name string|nil
 ---@field table string Canonical table name.
 ---@field column integer 0-based schedule-at column.
----@field reducer string Canonical function name.
+---@field reducer string Canonical function name. May name a **procedure**: upstream
+---documents this field as "the reducer or procedure to call", so anything that
+---resolves it must look in both lists, not only `reducers`.
 
 ---@class SpacetimeSchemaTable
 ---@field name string Display name: v10 `source_name` (`"ledgerEntry"`), v9 `name`.
@@ -121,6 +126,25 @@ local M = {}
 ---@field ok_return_type table|nil v10 only.
 ---@field err_return_type table|nil v10 only.
 ---@field lifecycle string|nil `"Init"`, `"OnConnect"` or `"OnDisconnect"`.
+
+---A procedure: the module's other kind of callable function.
+---
+---A procedure is not automatically transactional, which is the whole reason it
+---is a kind of its own rather than a flag on a reducer — it may do things a
+---reducer may not, and it returns one value instead of an `ok`/`err` pair. The
+---two otherwise go together: they share a namespace (`ExplicitNames` calls both
+---`Function`), they share `FunctionVisibility`, a `Schedules` entry may name
+---either, and one `POST /v1/database/{db}/call/{name}` route calls both — it
+---tries the reducers first and falls through to the procedures.
+---
+---There is no v9 counterpart, so unlike a reducer's `visibility` an empty
+---procedure list means the module has none, never that the server did not say.
+---@class SpacetimeSchemaProcedure
+---@field name string Display name, the module's own spelling.
+---@field canonical string The name to call. Call this, display `name`.
+---@field params SpacetimeSchemaParam[]
+---@field visibility string|nil `"ClientCallable"`/`"Private"`.
+---@field return_type table|nil Raw AlgebraicType. One value, not an `ok`/`err` pair.
 
 -- Schema versions to try, most capable first. `?version=` is required and
 -- accepts only these two: omitting it, or sending `11`, is a 400 rather than a
@@ -281,26 +305,28 @@ function M.is_system_table(name)
 	return type(name) == "string" and SYSTEM_TABLE_SET[name] == true
 end
 
----Whether a reducer may be called from a client.
+---Whether a function — a reducer or a procedure — may be called from a client.
 ---
 ---**Unknown visibility means callable.** v9 carries no visibility field at all,
 ---and hiding every reducer on an older server would look like data loss rather
----than like a missing field.
----@param reducer SpacetimeSchemaReducer|table
+---than like a missing field. A procedure only ever arrives on v10, so its
+---visibility is always known.
+---@param fn SpacetimeSchemaReducer|SpacetimeSchemaProcedure|table
 ---@return boolean
-function M.is_callable(reducer)
-	if type(reducer) ~= "table" then
+function M.is_callable(fn)
+	if type(fn) ~= "table" then
 		return false
 	end
-	return reducer.visibility ~= "Private"
+	return fn.visibility ~= "Private"
 end
 
 ---Both spellings of a name: `name (canonical)`, or just `name` where they agree.
 ---
 ---The module was written as `ledgerEntry` and SQL knows it as `ledger_entry`;
 ---the same goes for `onConnect` / `on_connect`. Every view that names a table, a
----view or a reducer shows both, because the endpoints accept either — so the
----rule lives here rather than being spelt out once per renderer.
+---view, a reducer or a procedure shows both, because the endpoints accept
+---either — so the rule lives here rather than being spelt out once per
+---renderer.
 ---@param name any Display name; anything but a string reads as empty.
 ---@param canonical any SQL name; ignored when it is absent or equal to `name`.
 ---@return string
@@ -623,6 +649,7 @@ local function parse_v10(value)
 		tables = {},
 		views = {},
 		reducers = {},
+		procedures = {},
 		schedules = {},
 		lifecycle = {},
 		names = new_names(),
@@ -692,6 +719,22 @@ local function parse_v10(value)
 		end
 	end
 
+	-- Procedures are named out of the same map as the reducers: `ExplicitNames`
+	-- tags both kinds `Function`, and the two may not collide, because one route
+	-- calls both by name.
+	for _, raw in ipairs(list(sections.Procedures)) do
+		local name = text(raw.source_name)
+		if name ~= nil then
+			model.procedures[#model.procedures + 1] = {
+				name = name,
+				canonical = names.functions.to_canonical[name] or name,
+				params = param_list(raw.params),
+				visibility = tag(raw.visibility),
+				return_type = type(raw.return_type) == "table" and raw.return_type or nil,
+			}
+		end
+	end
+
 	for _, raw in ipairs(list(sections.Schedules)) do
 		local table_name, reducer = text(raw.table_name), text(raw.function_name)
 		if table_name ~= nil and reducer ~= nil then
@@ -725,6 +768,7 @@ local function parse_v10(value)
 	sort_by_canonical(model.tables)
 	sort_by_canonical(model.views)
 	sort_by_canonical(model.reducers)
+	sort_by_canonical(model.procedures)
 	attach_schedules(model)
 
 	return model
@@ -745,6 +789,8 @@ local function parse_v9(value)
 		tables = {},
 		views = {},
 		reducers = {},
+		-- Empty, and not for want of looking: v9 predates procedures entirely.
+		procedures = {},
 		schedules = {},
 		lifecycle = {},
 		names = new_names(),

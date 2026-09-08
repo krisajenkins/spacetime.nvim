@@ -1,7 +1,7 @@
 -- The content window's current view, whatever it happens to be.
 --
 -- Four modules paint `spacetime://content` — the row grid, the schema, the
--- reducers and the logs — and each of them knows how to re-run itself. What
+-- functions and the logs — and each of them knows how to re-run itself. What
 -- none of them knows is which of the four is *on screen*, and `r` needs exactly
 -- that: it refreshes what the user is looking at, not all four views in turn.
 --
@@ -25,13 +25,13 @@ local M = {}
 ---
 ---Order is not significant — at most one of them holds the claim — but it is the
 ---order `ui/sidebar.lua` opens them in, so a reader can check the list is
----complete against the four keys that open them (`<CR>`, `s`, `R`, `gl`).
-local VIEWS = { "rows", "schema", "reducers", "logs" }
+---complete against the four keys that open them (`<CR>`, `s`, `F`, `gl`).
+local VIEWS = { "rows", "schema", "functions", "logs" }
 
 ---Re-run whatever the content window is showing.
 ---
 ---Each view's own `refresh()` decides what that means: the grid refetches the
----page it is on, the schema and reducers views re-request the schema, and the
+---page it is on, the schema and functions views re-request the schema, and the
 ---logs view asks for its backlog again and restarts a follow. All four drop
 ---their cache entry first — the cache has no expiry, so a refresh that read it
 ---would paint the same rows again and call it fresh.

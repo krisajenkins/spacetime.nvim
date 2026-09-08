@@ -12,7 +12,7 @@
 -- run twice, and the v9 run is what proves the fallback path is really taken.
 --
 -- The reducers are NOT here: they belong to the database rather than to any one
--- table and have a view of their own (tests/test_reducers_ui.lua). What this file
+-- table and have a view of their own (tests/test_functions_ui.lua). What this file
 -- asserts about them is that this view no longer mentions them at all.
 local child, new_set = require("tests.helpers.child")()
 local expect = MiniTest.expect
@@ -243,8 +243,8 @@ end
 --------------------------------------------------------------------------------
 
 -- Issue #38: the reducers are the *database's*, not the table's, so describing a
--- table must not list them. |:SpacetimeReducers| is where they live now, and
--- tests/test_reducers_ui.lua is where they are asserted.
+-- table must not list them. |:SpacetimeFunctions| is where they live now, and
+-- tests/test_functions_ui.lua is where they are asserted.
 T["the reducers are not in the schema view at all"] = function()
 	serve_schema(read("schema_v10.json"))
 

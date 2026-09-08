@@ -7,8 +7,8 @@ code in this repository.
 
 spacetime.nvim is a SpacetimeDB browser inside Neovim: `:Spacetime` opens a
 sidebar of the databases your identity owns beside a content window that browses
-rows as a sortable, pageable grid, describes schemas, lists reducers, and tails
-logs.
+rows as a sortable, pageable grid, describes schemas, lists a module's reducers
+and procedures, and tails logs.
 
 **It talks to SpacetimeDB's HTTP API directly, over `curl`.** The `spacetime`
 CLI is not in the data path at all — it is how you log in (it writes the
@@ -82,11 +82,11 @@ lua/spacetime/lib/             pure logic; no vim.api (see the split rule below)
   bsatn.lua                    hex-encoded BSATN -> the SATS shape value.lua renders
   client.lua                   one method per HTTP endpoint; cb(err, value) throughout
   clitoml.lua                  deliberately partial reader for the CLI's cli.toml
+  functions.lua                reducers and procedures, normalised for display
   http.lua                     the transport: request table -> curl -> response
   identity.lua                 account identity derived from the token's OIDC claims
   json.lua                     big-integer-preserving JSON decode
   logs.lua                     one NDJSON log line -> one entry; level ordering
-  reducers.lua                 a module's reducers, normalised for display
   schema.lua                   schema v10 and v9 normalised into one model
   sort.lua                     display order over the rows, without refetching
   sql.lua                      the SQL response envelope and the SELECT builder
@@ -95,11 +95,11 @@ lua/spacetime/ui/              buffers, windows, keymaps
   buffer.lua                   scratch buffers, the layout, and the one write
   content.lua                  which of the four views the content window holds
   detail.lua                   the schema fetch the two detail views share
+  functions.lua                the reducers-and-procedures view
   grid.lua                     row-grid layout: columns and cells -> lines + spans
   highlights.lua               default highlight groups (all `default` links)
   keys.lua                     buffer-local keymaps, and the unbinding
   logs.lua                     the log view, static and followed
-  reducers.lua                 the reducers view
   rows.lua                     the row grid view
   schema.lua                   the schema detail view
   sections.lua                 title/badge/sections sink for the two detail views

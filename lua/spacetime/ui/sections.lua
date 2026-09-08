@@ -1,6 +1,6 @@
 -- The sink the two detail views assemble their lines in.
 --
--- `ui/schema.lua` and `ui/reducers.lua` both paint the same shape: a title, a
+-- `ui/schema.lua` and `ui/functions.lua` both paint the same shape: a title, a
 -- badge under it, then headed sections of aligned rows — or `(none)` where a
 -- section is empty — and an `error:` block instead of the lot when something
 -- went wrong. That shape was `ui/schema.lua`'s alone until the reducers moved

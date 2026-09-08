@@ -2,14 +2,14 @@
 
 A [SpacetimeDB](https://spacetimedb.com) browser inside Neovim.
 
-![Connecting to a local server, browsing a table, sorting it, then its schema and the module's reducers](demo.gif)
+![Connecting to a local server, browsing a table, sorting it, then its schema and the module's functions](demo.gif)
 
 `:Spacetime` opens a two-window layout: a sidebar listing the databases your
 identity owns, and a content window beside it. Expand a database to see its
 tables, views and `st_*` system tables; press `<CR>` on one to browse its rows
 as an aligned, sortable, pageable grid; describe its schema; list the module's
-reducers; or tail a database's logs, either as a static backlog or followed
-live.
+reducers and procedures; or tail a database's logs, either as a static backlog
+or followed live.
 
 The plugin talks to SpacetimeDB's HTTP API directly, over `curl`. It never
 shells out to the `spacetime` CLI to browse — it only reads the CLI's config
@@ -89,9 +89,9 @@ The sidebar then lists the databases belonging to your identity. From there:
   🔒 or 🌎 for private or public.
 - `<CR>` on a table or view runs `SELECT * FROM "table" LIMIT 100` and renders
   the answer in the content window as a grid.
-- `s` on a table or view shows its schema there instead; `R` lists the reducers
-  of the database the cursor is inside, `gl` shows that database's logs, and
-  `gL` follows them live.
+- `s` on a table or view shows its schema there instead; `F` lists the reducers
+  and procedures of the database the cursor is inside, `gl` shows that
+  database's logs, and `gL` follows them live.
 - `q` closes the layout and cancels anything in flight; the content window gets
   its original buffer back.
 - `?` prints the sidebar's key map.
@@ -146,7 +146,7 @@ buffer.
 | `:SpacetimeDatabases`       | Open the browser and refetch the database list   |
 | `:SpacetimeRows {tbl}`      | Browse the rows of `[db.]tbl`                    |
 | `:SpacetimeSchema {tbl}`    | Show the schema of `[db.]tbl`                    |
-| `:SpacetimeReducers [db]`   | List a database's reducers                       |
+| `:SpacetimeFunctions [db]`  | List a database's reducers and procedures        |
 | `:SpacetimeLogs[!] [db]`    | Show a database's logs; `!` follows them live    |
 | `:SpacetimeLogsStop`        | Stop following logs                              |
 | `:SpacetimeStatus`          | Print the resolved connection                    |
@@ -172,7 +172,7 @@ appear; run the command once and it will complete thereafter.
 
 - `:SpacetimeConnect` — nicknames from your `cli.toml`. A local file read; the
   tokens in that file are never touched.
-- `:SpacetimeReducers`, `:SpacetimeLogs` — cached database names.
+- `:SpacetimeFunctions`, `:SpacetimeLogs` — cached database names.
 - `:SpacetimeRows`, `:SpacetimeSchema` — cached `db.table`, in both the source
   and the SQL spelling where they differ (`spacegym.ledgerEntry` and
   `spacegym.ledger_entry`). Only the qualified form is offered.
@@ -256,9 +256,10 @@ rather than painted over the table you are now looking at.
 `:SpacetimeSchema spacegym.ledgerEntry` describes one table in the content
 window: its columns with their resolved types, then its indexes and its
 constraints. Views are described too — a view can have neither indexes nor
-constraints, so those two sections are simply absent. Reducers are not here:
-they belong to the database rather than to any one of its tables, so they have
-a view of their own ([`:SpacetimeReducers`](#spacetimereducers)).
+constraints, so those two sections are simply absent. Reducers and procedures
+are not here: they belong to the database rather than to any one of its tables,
+so they have a view of their own
+([`:SpacetimeFunctions`](#spacetimefunctions)).
 
 ```
 ledgerEntry (ledger_entry)
@@ -292,29 +293,45 @@ Nothing in this view is truncated, and the only keys it binds are the shared
 describing a table in a database you have already expanded costs no request —
 and `r` is what asks the server again.
 
-### `:SpacetimeReducers`
+### `:SpacetimeFunctions`
 
-`:SpacetimeReducers spacegym` lists the module's reducers in the content
-window. They belong to the database rather than to any one table, which is why
-they are a view of their own; the sidebar's `R` opens it for the database the
-cursor is inside.
+`:SpacetimeFunctions spacegym` lists the module's callable functions in the
+content window. They belong to the database rather than to any one table, which
+is why they are a view of their own; the sidebar's `F` opens it for the database
+the cursor is inside.
 
 ```
 spacegym
-19 reducers · schema v10
+19 reducers · 2 procedures · schema v10
 
 Reducers
   ClientCallable  book(instanceId: U64) -> ok {} | err String
   Private         on_connect() -> ok {} | err String
+
+Procedures
+  Private         purge_cache() -> {}
+  ClientCallable  send_email(to: String) -> Bool
 ```
 
-Each reducer is listed with its parameter names and types and, where the server
-sends them, the `ok` and `err` types it returns. A signature reads as the call
-you would make, so — unlike the schema view — it names its reducer *canonically*
-and once: `on_connect`, not `onConnect (on_connect)`. The schema view is where
-both spellings of a name are shown.
+A module has two kinds of callable function, and they get a heading each
+because they are not interchangeable. A **reducer** runs in a transaction and
+answers with an `ok`/`err` pair. A **procedure** does not, which is what lets it
+do things a reducer may not, and it answers with a single value. One
+`POST .../call/{name}` route calls either, so the heading a name sits under is
+how you tell what calling it will do.
 
-A reducer is marked `ClientCallable` or `Private` as the server reports it, and
+Procedures arrived with schema v10 and most modules have none. Where a module
+has none, the `Procedures` heading is left off entirely rather than shown as
+`(none)` — there is nothing to report. On a v9 server there are no procedures to
+ask for at all.
+
+Each function is listed with its parameter names and types, and its return
+types where the server sends them. A signature reads as the call you would make,
+so — unlike the schema view — it names its function *canonically* and once:
+`on_connect`, not `onConnect (on_connect)`. The schema view is where both
+spellings of a name are shown.
+
+A function is marked `ClientCallable` or `Private` as the server reports it, and
 a `Private` one is greyed out rather than hidden: it is part of the module, it
 is simply not yours to call. Older servers answer with a schema that carries no
 visibility field at all, and there the marker is **omitted entirely** rather
@@ -323,7 +340,7 @@ than guessed at.
 The database may be left off, in which case it is the one the connection
 resolved to. Nothing here is truncated, the only keys it binds are the shared
 `q`, `<Tab>` and `r`, and the schema is the same one the sidebar and the schema
-view share — so listing the reducers of a database you have already expanded
+view share — so listing the functions of a database you have already expanded
 costs no request, and `r` refreshes it for all three.
 
 ### `:SpacetimeLogs`
@@ -420,27 +437,27 @@ Every mapping is buffer-local; the plugin sets nothing globally.
 
 In the `spacetime://sidebar` buffer (filetype `spacetimetree`):
 
-| Key           | Does                                                   |
-| ------------- | ------------------------------------------------------ |
-| `<CR>` or `o` | Expand or open the node under the cursor               |
-| `s`           | Show the schema of the table or view under the cursor  |
-| `R`           | List the reducers of the database the cursor is inside |
-| `gl`          | Show the logs of the database the cursor is inside     |
-| `gL`          | Follow those logs live                                 |
-| `r`           | Refresh: drop the cache and fetch both halves again    |
-| `q`           | Close the layout                                       |
-| `<Tab>`       | Move to the other window of the layout                 |
-| `y`           | Yank the node's name                                   |
-| `gi`          | Yank the database's identity                           |
-| `?`           | Print this key map                                     |
+| Key           | Does                                                    |
+| ------------- | ------------------------------------------------------- |
+| `<CR>` or `o` | Expand or open the node under the cursor                |
+| `s`           | Show the schema of the table or view under the cursor   |
+| `F`           | List the functions of the database the cursor is inside |
+| `gl`          | Show the logs of the database the cursor is inside      |
+| `gL`          | Follow those logs live                                  |
+| `r`           | Refresh: drop the cache and fetch both halves again     |
+| `q`           | Close the layout                                        |
+| `<Tab>`       | Move to the other window of the layout                  |
+| `y`           | Yank the node's name                                    |
+| `gi`          | Yank the database's identity                            |
+| `?`           | Print this key map                                      |
 
-`s`, `R`, `gl` and `gL` are the keystroke forms of `:SpacetimeSchema`,
-`:SpacetimeReducers` and `:SpacetimeLogs[!]`, answered by the node under the
-cursor: `s` needs a table or a view, and `R`, `gl` and `gL` take the database
+`s`, `F`, `gl` and `gL` are the keystroke forms of `:SpacetimeSchema`,
+`:SpacetimeFunctions` and `:SpacetimeLogs[!]`, answered by the node under the
+cursor: `s` needs a table or a view, and `F`, `gl` and `gL` take the database
 the cursor is inside — from one of its tables just as well as from the database
 line. Where a key does not apply it says so and does nothing. The sidebar's `s`
 and the grid's `s` (sort, below) are mappings in different buffers, so they
-never both apply. `R` is the capital because the lower-case `r` refreshes.
+never both apply.
 
 `y` and `gi` honour a register prefix, so `"+gi` puts the identity on the
 system clipboard.
@@ -451,7 +468,7 @@ the cached database list and fetches it again; on a database node it also drops
 that database's schema and rows and clears a recorded pause, which is how you
 retry a paused database. In the content window it re-runs whichever view is
 showing — the grid refetches the page it is on (keeping the page, dropping the
-sort, because those rows are being replaced), the schema and reducers views ask
+sort, because those rows are being replaced), the schema and functions views ask
 for the schema again, and the log view asks for its backlog again, restarting a
 follow and keeping the level you had narrowed to. A content window still on the
 placeholder has nothing to refresh, and `r` is then the tree's alone. Between
@@ -496,9 +513,9 @@ In the content window *while it is showing logs*:
 | `q`     | Close the layout                       |
 | `<Tab>` | Move to the other window of the layout |
 
-### Schema and reducers
+### Schema and functions
 
-In the content window *while it is showing a schema or a reducer list*:
+In the content window *while it is showing a schema or a function list*:
 
 | Key     | Does                                   |
 | ------- | -------------------------------------- |
@@ -512,7 +529,7 @@ common to all four — and to the sidebar — because the sidebar and the conten
 window are one thing: closing either closes both, whichever window you press it
 in, `<Tab>` crosses between them in either direction (there are two windows, so
 there is nothing for a `<S-Tab>` to do), and `r` refreshes both at once. The
-schema and reducers views bind nothing else: they are text, with nothing to
+schema and functions views bind nothing else: they are text, with nothing to
 page, sort or filter.
 
 In most terminals `<Tab>` is the same keystroke as `<C-i>`, so this mapping

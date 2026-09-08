@@ -2,9 +2,9 @@
 -- content window.
 --
 -- One table's shape, and only that: its columns with their resolved types, its
--- indexes and its constraints. The module's reducers belong to the database
+-- indexes and its constraints. The module's functions belong to the database
 -- rather than to any one table, and have a view of their own — see
--- `ui/reducers.lua`. This file lives under `ui/` and may therefore touch
+-- `ui/functions.lua`. This file lives under `ui/` and may therefore touch
 -- `vim.api`; everything it reads under `lib/` may not. `lib/schema.lua` has
 -- already normalised both wire versions into one model and `lib/value.label`
 -- already turns an `AlgebraicType` into a name, so this file is layout and
@@ -17,7 +17,7 @@
 --    `ledgerEntry (ledger_entry)` — because the SQL endpoint accepts either, so
 --    the source spelling is a readability win rather than a trap. Where the two
 --    coincide (every v9 schema, and most v10 names) only the one name is
---    printed. `lib/schema.display_name` owns that rule, shared with the reducers
+--    printed. `lib/schema.display_name` owns that rule, shared with the functions
 --    view.
 -- 2. **Nothing is truncated.** `ui/grid.lua` cuts a cell to 40 columns because
 --    the row grid has `y` and `K` to recover the rest with; this view has
@@ -36,7 +36,7 @@
 
 local M = {}
 
--- The title/badge/sections sink, shared with `ui/reducers.lua`. Required at load
+-- The title/badge/sections sink, shared with `ui/functions.lua`. Required at load
 -- time like `ui/keys` below, and safe for the same reason: `ui/sections.lua`
 -- requires nothing at load time, so it cannot cycle back here.
 local sections = require("spacetime.ui.sections")
@@ -74,7 +74,7 @@ local LOADING = "loading…"
 ---The request plus what has become of it.
 ---
 ---`status`, `error` and `schema` come from `SpacetimeDetailDisplay`, which is
----what `ui/detail.fetch_schema` fills in — the same three fields the reducers
+---what `ui/detail.fetch_schema` fills in — the same three fields the functions
 ---view gets back from the same request.
 ---@class SpacetimeSchemaDisplay : SpacetimeSchemaRequest, SpacetimeDetailDisplay
 
@@ -319,7 +319,7 @@ end
 
 ---Fetch the database's schema and repaint when it lands.
 ---
----`ui/detail.lua` owns the request itself, because the reducers view wants
+---`ui/detail.lua` owns the request itself, because the functions view wants
 ---exactly the same one: the same key and the same cache the sidebar's own fetch
 ---uses, so expanding a database in the sidebar and running `:SpacetimeSchema` on
 ---one of its tables costs one request between them, whichever order they happen

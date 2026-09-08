@@ -778,7 +778,7 @@ T["every documented key is mapped, buffer-locally, in the sidebar"] = function()
 		end)(...)
 	]]
 
-	for _, lhs in ipairs({ "<CR>", "o", "s", "R", "gl", "gL", "r", "q", "y", "gi", "?" }) do
+	for _, lhs in ipairs({ "<CR>", "o", "s", "F", "gl", "gL", "r", "q", "y", "gi", "?" }) do
 		local map = child.lua_get(described, { lhs })
 		expect.equality({ lhs, map.buffer, map.callback }, { lhs, 1, "function" })
 	end
@@ -921,7 +921,7 @@ T["? prints the key map"] = function()
 	-- The keys that reach the other views are listed too: `?` is the only place
 	-- they are discoverable, and it is built from the mapping table itself.
 	expect.equality(messages:find("show the schema of the table under the cursor", 1, true) ~= nil, true)
-	expect.equality(messages:find("show the reducers of the database the cursor is in", 1, true) ~= nil, true)
+	expect.equality(messages:find("show the functions of the database the cursor is in", 1, true) ~= nil, true)
 	expect.equality(messages:find("show the logs of the database the cursor is in", 1, true) ~= nil, true)
 	expect.equality(messages:find("follow those logs live", 1, true) ~= nil, true)
 end

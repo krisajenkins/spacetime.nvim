@@ -317,9 +317,20 @@ negotiation (`crates/cli/src/api.rs:65-95`): request v10, and on a 4xx retry wit
 normalise into the same internal model. About ten lines, and it keeps old servers working.
 
 **Caveat.** `RawModuleDefV10Section` is `#[non_exhaustive]` — new section kinds will appear
-(the checkout already has `Procedures`, `HttpHandlers`, `HttpRoutes`, `ViewPrimaryKeys`,
-`Submodules`, `CaseConversionPolicy`). The parser must skip unrecognised sections silently
-rather than erroring.
+(the checkout already has `HttpHandlers`, `HttpRoutes`, `ViewPrimaryKeys`, `Submodules`,
+`CaseConversionPolicy`). The parser must skip unrecognised sections silently rather than
+erroring.
+
+`Procedures` was on that list until it was read. It is the second thing only v10 carries:
+a procedure is a callable function that is *not* automatically transactional and answers
+with a single value rather than an `ok`/`err` pair (`crates/bindings/src/lib.rs:714`). The
+two kinds share a namespace — `ExplicitNames` tags both `Function` — share
+`FunctionVisibility`, and share one `POST /v1/database/{db}/call/{name}` route, which tries
+the reducers first and falls through to the procedures
+(`crates/client-api/src/routes/database.rs:186`). `RawScheduleDefV10.function_name` may
+name either. That is why they are two headings in one view (`:SpacetimeFunctions`) rather
+than either one merged list or two commands: they are called the same way, but what calling
+one does differs, so the user has to be told which kind a name is.
 
 ### Why a small pre-pass of our own, and no vendored library
 
@@ -575,9 +586,14 @@ be one commit.
     name and the canonical name where they differ (`ledgerEntry` → `ledger_entry`).
 
     Superseded in part by issue #38: the reducers are the *database's*, not the table's,
-    so they moved out of this view into `ui/reducers.lua` (`:SpacetimeReducers [db]`, and
-    `R` in the sidebar). Everything above about how a reducer is rendered — the
-    signature, the return clause, the `Private` marker — holds there instead.
+    so they moved out of this view into a view of their own. Everything above about how a
+    reducer is rendered — the signature, the return clause, the `Private` marker — holds
+    there instead.
+
+    That view is now `ui/functions.lua` (`:SpacetimeFunctions [db]`, and `F` in the
+    sidebar), which lists the module's procedures under a second heading. It was
+    `ui/reducers.lua` / `:SpacetimeReducers` / `R` until procedures were read off the v10
+    schema and the view stopped being about reducers alone.
 
 ### Phase 8 — Logs
 

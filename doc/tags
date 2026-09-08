@@ -2,9 +2,9 @@
 :SpacetimeConnect	spacetime.txt	/*:SpacetimeConnect*
 :SpacetimeConnect!	spacetime.txt	/*:SpacetimeConnect!*
 :SpacetimeDatabases	spacetime.txt	/*:SpacetimeDatabases*
+:SpacetimeFunctions	spacetime.txt	/*:SpacetimeFunctions*
 :SpacetimeLogs	spacetime.txt	/*:SpacetimeLogs*
 :SpacetimeLogsStop	spacetime.txt	/*:SpacetimeLogsStop*
-:SpacetimeReducers	spacetime.txt	/*:SpacetimeReducers*
 :SpacetimeRows	spacetime.txt	/*:SpacetimeRows*
 :SpacetimeSchema	spacetime.txt	/*:SpacetimeSchema*
 :SpacetimeStatus	spacetime.txt	/*:SpacetimeStatus*
@@ -26,6 +26,10 @@ spacetime-config	spacetime.txt	/*spacetime-config*
 spacetime-configuration	spacetime.txt	/*spacetime-configuration*
 spacetime-contents	spacetime.txt	/*spacetime-contents*
 spacetime-development	spacetime.txt	/*spacetime-development*
+spacetime-functions-names	spacetime.txt	/*spacetime-functions-names*
+spacetime-functions-private	spacetime.txt	/*spacetime-functions-private*
+spacetime-functions-procedures	spacetime.txt	/*spacetime-functions-procedures*
+spacetime-functions-view	spacetime.txt	/*spacetime-functions-view*
 spacetime-grid	spacetime.txt	/*spacetime-grid*
 spacetime-grid-cache	spacetime.txt	/*spacetime-grid-cache*
 spacetime-grid-paging	spacetime.txt	/*spacetime-grid-paging*
@@ -37,8 +41,8 @@ spacetime-highlights	spacetime.txt	/*spacetime-highlights*
 spacetime-installation	spacetime.txt	/*spacetime-installation*
 spacetime-introduction	spacetime.txt	/*spacetime-introduction*
 spacetime-keymaps	spacetime.txt	/*spacetime-keymaps*
+spacetime-keys-functions	spacetime.txt	/*spacetime-keys-functions*
 spacetime-keys-logs	spacetime.txt	/*spacetime-keys-logs*
-spacetime-keys-reducers	spacetime.txt	/*spacetime-keys-reducers*
 spacetime-keys-rows	spacetime.txt	/*spacetime-keys-rows*
 spacetime-keys-schema	spacetime.txt	/*spacetime-keys-schema*
 spacetime-keys-shared	spacetime.txt	/*spacetime-keys-shared*
@@ -55,9 +59,6 @@ spacetime-opt-side	spacetime.txt	/*spacetime-opt-side*
 spacetime-opt-width	spacetime.txt	/*spacetime-opt-width*
 spacetime-project-files	spacetime.txt	/*spacetime-project-files*
 spacetime-quickstart	spacetime.txt	/*spacetime-quickstart*
-spacetime-reducers-names	spacetime.txt	/*spacetime-reducers-names*
-spacetime-reducers-private	spacetime.txt	/*spacetime-reducers-private*
-spacetime-reducers-view	spacetime.txt	/*spacetime-reducers-view*
 spacetime-requirements	spacetime.txt	/*spacetime-requirements*
 spacetime-requires-cli	spacetime.txt	/*spacetime-requires-cli*
 spacetime-schema-names	spacetime.txt	/*spacetime-schema-names*

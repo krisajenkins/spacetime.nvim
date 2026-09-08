@@ -207,7 +207,7 @@ function M.complete_server(arg_lead)
 	return complete(cli_nicknames, arg_lead)
 end
 
----Complete a cached database name. For `:SpacetimeReducers` and
+---Complete a cached database name. For `:SpacetimeFunctions` and
 ---`:SpacetimeLogs`.
 ---@param arg_lead string
 ---@return string[]
@@ -458,22 +458,22 @@ local function open_schema(arg)
 	})
 end
 
----Show `[db]`'s reducers. What `:SpacetimeReducers` does.
+---Show `[db]`'s reducers and procedures. What `:SpacetimeFunctions` does.
 ---
 ---No cache lookup here, as in `open_schema`: the view needs the whole model
 ---rather than one entry, and it fetches the model itself when the session has not
 ---already got it.
 ---@param arg string The command's one argument; empty when it was omitted.
-local function open_reducers(arg)
-	local connection, database = database_target(arg, ":SpacetimeReducers")
+local function open_functions(arg)
+	local connection, database = database_target(arg, ":SpacetimeFunctions")
 	if not connection or not database then
 		return
 	end
 
-	-- The layout first: `ui/reducers.lua` paints into the content buffer, and there
-	-- is no content buffer until the browser is open.
+	-- The layout first: `ui/functions.lua` paints into the content buffer, and
+	-- there is no content buffer until the browser is open.
 	require("spacetime.ui.sidebar").open()
-	require("spacetime.ui.reducers").open({ connection = connection, database = database })
+	require("spacetime.ui.functions").open({ connection = connection, database = database })
 end
 
 ---Show `[db]`'s logs. What `:SpacetimeLogs[!]` does.
@@ -558,14 +558,15 @@ M.COMMANDS = {
 		end,
 	},
 	{
-		name = "SpacetimeReducers",
-		desc = "Show a database's reducers",
+		name = "SpacetimeFunctions",
+		desc = "Show a database's reducers and procedures",
 		nargs = "?",
-		-- A database, not a table: the reducers belong to the module rather than to
-		-- any one of its tables, which is why they are not in the schema view.
+		-- A database, not a table: a module's functions belong to the module rather
+		-- than to any one of its tables, which is why they are not in the schema
+		-- view.
 		complete = M.complete_database,
 		run = function(cmd)
-			open_reducers(cmd.args)
+			open_functions(cmd.args)
 		end,
 	},
 	{

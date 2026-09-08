@@ -897,26 +897,26 @@ function M.describe()
 	})
 end
 
----Show the reducers of the database the cursor is inside. What `R` does.
+---Show the functions of the database the cursor is inside. What `F` does.
 ---
----The keystroke form of |:SpacetimeReducers|. Reducers belong to the module
----rather than to any one of its tables, so — exactly like `gl` — this answers
----with the database the cursor is *inside*: pressed on a table or a view it shows
----that node's database's reducers. A top-level message line belongs to no
----database and says so.
+---The keystroke form of |:SpacetimeFunctions|. A module's reducers and
+---procedures belong to the module rather than to any one of its tables, so —
+---exactly like `gl` — this answers with the database the cursor is *inside*:
+---pressed on a table or a view it shows that node's database's functions. A
+---top-level message line belongs to no database and says so.
 ---
 ---No layout call: the cursor is in the sidebar, so the content window is already
 ---there. The schema itself is the one the tree cached when the database was
 ---expanded, so this normally costs no request at all.
-function M.reducers()
+function M.functions()
 	local node = M.node_under_cursor()
 	local database = node and node.database
 	if not connection or type(database) ~= "string" or database == "" then
-		require("spacetime.logger").warn("there are no reducers to show here")
+		require("spacetime.logger").warn("there are no functions to show here")
 		return
 	end
 
-	require("spacetime.ui.reducers").open({ connection = connection, database = database })
+	require("spacetime.ui.functions").open({ connection = connection, database = database })
 end
 
 ---Show the logs of the database the cursor is inside. What `gl` and `gL` do.
@@ -1003,10 +1003,10 @@ M.KEYMAPS = {
 		end,
 	},
 	{
-		keys = { "R" },
-		desc = "show the reducers of the database the cursor is in",
+		keys = { "F" },
+		desc = "show the functions of the database the cursor is in",
 		action = function()
-			M.reducers()
+			M.functions()
 		end,
 	},
 	{

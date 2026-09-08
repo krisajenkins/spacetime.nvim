@@ -35,7 +35,7 @@ local COMMANDS = {
 	"SpacetimeDatabases",
 	"SpacetimeRows",
 	"SpacetimeSchema",
-	"SpacetimeReducers",
+	"SpacetimeFunctions",
 	"SpacetimeLogs",
 	"SpacetimeLogsStop",
 	"SpacetimeStatus",
@@ -144,7 +144,7 @@ T["arguments are optional, required or forbidden per command"] = function()
 	expect.equality(defined.SpacetimeDatabases.nargs, "0")
 	expect.equality(defined.SpacetimeRows.nargs, "1")
 	expect.equality(defined.SpacetimeSchema.nargs, "1")
-	expect.equality(defined.SpacetimeReducers.nargs, "?")
+	expect.equality(defined.SpacetimeFunctions.nargs, "?")
 	expect.equality(defined.SpacetimeLogs.nargs, "?")
 	expect.equality(defined.SpacetimeLogsStop.nargs, "0")
 	expect.equality(defined.SpacetimeStatus.nargs, "0")
@@ -164,7 +164,7 @@ T["exactly the commands that take a name have completion"] = function()
 		SpacetimeConnect = true,
 		SpacetimeRows = true,
 		SpacetimeSchema = true,
-		SpacetimeReducers = true,
+		SpacetimeFunctions = true,
 		SpacetimeLogs = true,
 	}
 	for _, name in ipairs(COMMANDS) do
@@ -373,8 +373,11 @@ T["completion is wired to the commands themselves"] = function()
 
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeConnect loc', 'cmdline')]]), { "local" })
 	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeLogs arch', 'cmdline')]]), { "archive" })
-	-- A database, not a table: the reducers belong to the module.
-	expect.equality(child.lua_get([[vim.fn.getcompletion('SpacetimeReducers spacet', 'cmdline')]]), { "spacetutorial" })
+	-- A database, not a table: a module's functions belong to the module.
+	expect.equality(
+		child.lua_get([[vim.fn.getcompletion('SpacetimeFunctions spacet', 'cmdline')]]),
+		{ "spacetutorial" }
+	)
 	expect.equality(
 		child.lua_get([[vim.fn.getcompletion('SpacetimeRows spacegym.mem', 'cmdline')]]),
 		{ "spacegym.member" }
@@ -438,7 +441,7 @@ T["completion never fires a request"] = function()
 
 	for _, line in ipairs({
 		"SpacetimeConnect ",
-		"SpacetimeReducers ",
+		"SpacetimeFunctions ",
 		"SpacetimeLogs ",
 		"SpacetimeRows ",
 		"SpacetimeSchema spacegym.",
