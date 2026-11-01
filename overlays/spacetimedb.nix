@@ -1,5 +1,5 @@
 # @update github-release clockworklabs/SpacetimeDB
-# SpacetimeDB - distributed database with intelligent modules
+# SpacetimeDB - high performance reactive database
 #
 # Upstream publishes prebuilt binaries only; nothing is built from source here,
 # so every supported platform needs its own tarball URL and hash in `sources`
@@ -14,7 +14,7 @@
 # 3. Re-hash every entry in `sources` (nix-prefetch-url caches into the store,
 #    so the build that follows won't re-download):
 #
-#      V=2.9.0
+#      V=2.13.0
 #      for T in aarch64-apple-darwin x86_64-apple-darwin \
 #               aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
 #        U="https://github.com/clockworklabs/SpacetimeDB/releases/download/v$V/spacetime-$T.tar.gz"
@@ -34,26 +34,26 @@
 final: prev:
 
 let
-  version = "2.9.0";
+  version = "2.14.0";
 
   # Nix system -> the Rust target triple upstream names its tarball after.
   # Upstream also ships x86_64-pc-windows-msvc, which Nix has no use for.
   sources = {
     aarch64-darwin = {
       target = "aarch64-apple-darwin";
-      hash = "sha256-zb/akPnkD3s85QqYDBKaxtF+hLp5MnEUmrxNW/kBTRs=";
+      hash = "sha256-Eij9WmP9JUe0ZkKa7P/qmoTJ8sffgT2zhQTvY5n7aPY=";
     };
     x86_64-darwin = {
       target = "x86_64-apple-darwin";
-      hash = "sha256-SMje8OAExZgHaboDvUEHoHmrUslj5i4NAaUrsiMWyCs=";
+      hash = "sha256-HOZPb0RdRO2OqMc1JrqiIEkUSwv9xrKqso3+4QeuSC8=";
     };
     aarch64-linux = {
       target = "aarch64-unknown-linux-gnu";
-      hash = "sha256-zSBOQQhjsFR3YLfWb8FB0LZ2U9NKdVlSt7jIjhOlrMk=";
+      hash = "sha256-1+8e/NQHdrgNYNli0C062AqpTZ3OK75Zk5INBUz7IRM=";
     };
     x86_64-linux = {
       target = "x86_64-unknown-linux-gnu";
-      hash = "sha256-R65oeFla/oiMcaEuJpWE4Yjmp87+VPkwHM8iQFutmzs=";
+      hash = "sha256-LYlQ3DxnkQqoCqdhLv3bXubtU8RDVz9hezrWX+8qoIQ=";
     };
   };
 
