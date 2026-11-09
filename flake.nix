@@ -4,16 +4,16 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/26.05";
     flake-utils.url = "github:numtide/flake-utils";
+    spacetimedb.url = "github:krisajenkins/spacetimedb-nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, spacetimedb }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
           overlays = [
-            (import ./overlays/spacetimedb.nix)
             (import ./overlays/neovim.nix)
           ];
         };
@@ -21,11 +21,11 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
+            spacetimedb.packages.${system}.default
             lua-language-server
             luajitPackages.luacheck
             stylua
             neovim
-            spacetimedb
             curl
             vhs # records scripts/record-demo.tape into demo.gif
             ncurses # tic, for the demo's semicolon-truecolor terminfo

@@ -34,10 +34,45 @@
         "type": "github"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1793526781,
+        "narHash": "sha256-2Cxxgpz1+cRgKZJFi12/9LG3aIBN66f2RvFs34Oj/A0=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "9bb52223f4f6a0cc606fd0852d8784f896c137d5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-26.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "spacetimedb": "spacetimedb"
+      }
+    },
+    "spacetimedb": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1794209396,
+        "narHash": "sha256-xeouMvlrWTTftyARt9655hU2ZttOL1ggij7meycXaXs=",
+        "owner": "krisajenkins",
+        "repo": "spacetimedb-nix",
+        "rev": "a044ffeca442e3337fdf372918278e726e6b3f75",
+        "type": "github"
+      },
+      "original": {
+        "owner": "krisajenkins",
+        "repo": "spacetimedb-nix",
+        "type": "github"
       }
     },
     "systems": {
